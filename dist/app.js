@@ -3,6 +3,8 @@ const emptyState = document.getElementById("empty-state");
 const entryTemplate = document.getElementById("entry-template");
 const connection = document.querySelector(".connection");
 const connectionText = document.getElementById("connection-text");
+const clockHours = document.getElementById("clock-hours");
+const clockMinutes = document.getElementById("clock-minutes");
 
 let entries = [];
 let hasLoadedSnapshot = false;
@@ -14,7 +16,38 @@ function displayTime(value) {
     hour: "2-digit",
     minute: "2-digit",
     hour12: true,
+    timeZone: "Asia/Dubai",
   }).format(date);
+}
+
+function displayDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("en-AE", {
+    day: "2-digit",
+    month: "short",
+    timeZone: "Asia/Dubai",
+  }).format(date);
+}
+
+function plateParts(value) {
+  const plate = String(value || "-").trim();
+  const parts = plate.split(/[\s\-/]+/).filter(Boolean);
+  if (parts.length > 1) {
+    return { code: parts[0].toUpperCase(), number: parts.slice(1).join(" ").toUpperCase() };
+  }
+  return { code: "AD", number: plate.toUpperCase() };
+}
+
+function updateClock() {
+  const parts = new Intl.DateTimeFormat("en-AE", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Dubai",
+  }).formatToParts(new Date());
+  clockHours.textContent = parts.find((part) => part.type === "hour")?.value || "00";
+  clockMinutes.textContent = parts.find((part) => part.type === "minute")?.value || "00";
 }
 
 function fillCell(node, selector, value) {
@@ -26,13 +59,20 @@ function makeEntryNode(entry, isNew) {
   node.dataset.id = entry.id;
   if (isNew) node.classList.add("is-new");
 
+  fillCell(node, ".date-cell", displayDate(entry.timestamp));
   fillCell(node, ".time-cell", displayTime(entry.timestamp));
-  fillCell(node, ".foreman-cell", entry.foreman);
   fillCell(node, ".employee-cell", entry.employee);
-  fillCell(node, ".plate-cell", entry.licensePlate);
   fillCell(node, ".service-cell", entry.service);
-  fillCell(node, ".company-cell", entry.company);
-  fillCell(node, ".price-cell", entry.price);
+  fillCell(node, ".price-value", entry.price);
+
+  const plate = plateParts(entry.licensePlate);
+  fillCell(node, ".plate-code", plate.code);
+  fillCell(node, ".plate-number", plate.number);
+  node.querySelector(".abu-dhabi-plate").setAttribute(
+    "aria-label",
+    `Abu Dhabi plate ${plate.code} ${plate.number}`,
+  );
+
   node.querySelector(".price-cell").dataset.free = String(entry.price).toLowerCase() === "free";
   return node;
 }
@@ -43,7 +83,6 @@ function render(nextEntries, newEntryId = "") {
   );
 
   entries = nextEntries.slice(0, 10);
-  document.documentElement.style.setProperty("--row-count", Math.max(entries.length, 1));
   const fragment = document.createDocumentFragment();
   entries.forEach((entry) => fragment.append(makeEntryNode(entry, entry.id === newEntryId)));
   entriesElement.replaceChildren(fragment);
@@ -65,7 +104,7 @@ function render(nextEntries, newEntryId = "") {
 }
 
 function setConnection(isLive, message) {
-  connection.classList.toggle("is-live", isLive);
+  connection.dataset.live = String(isLive);
   connectionText.textContent = message;
 }
 
@@ -252,3 +291,6 @@ if (useFirebase) {
 } else {
   connectLocal();
 }
+
+updateClock();
+window.setInterval(updateClock, 1000);

@@ -3,33 +3,35 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#090b10">
-    <meta name="description" content="Latest Al Raked service entries">
+    <meta name="theme-color" content="#ffffff">
+    <meta name="description" content="Live service display for Al Raked Car Washing Station">
     <title>Al Raked Live Display</title>
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23090b10'/%3E%3Cpath d='M14 44 28 16h9l13 28h-9l-2-6H25l-3 6Zm14-13h8l-4-10Z' fill='%23f2b84b'/%3E%3C/svg%3E">
+    <link rel="icon" type="image/png" href="/raked-icon.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Exo:wght@500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <main class="display" aria-labelledby="display-title">
       <header class="display-header">
-        <div>
-          <p class="eyebrow">AL RAKED</p>
-          <h1 id="display-title">Latest services</h1>
+        <div class="brand">
+          <img class="brand-logo" src="/raked-icon.png" alt="">
+          <h1 id="display-title">AL RAKED CAR WASHING STATION</h1>
         </div>
-        <div class="connection" aria-live="polite">
-          <span class="connection-dot" aria-hidden="true"></span>
-          <span id="connection-text">Connecting</span>
+        <div class="clock" aria-label="Current time">
+          <span id="clock-hours">00</span><span class="clock-colon" aria-hidden="true">:</span><span id="clock-minutes">00</span>
         </div>
+        <div class="connection sr-only" aria-live="polite"><span id="connection-text">Connecting</span></div>
       </header>
 
       <section class="feed" aria-label="Latest ten service entries">
         <div class="feed-head" role="row" aria-hidden="true">
+          <span>Date</span>
           <span>Time</span>
-          <span>Foreman</span>
           <span>Employee</span>
-          <span>Plate</span>
+          <span>Vehicle</span>
           <span>Service</span>
-          <span>Company</span>
           <span class="price-cell">Price</span>
         </div>
         <div id="entries" class="entries" role="rowgroup" aria-live="polite"></div>
@@ -41,13 +43,21 @@
 
     <template id="entry-template">
       <article class="entry" role="row">
+        <div class="cell date-cell" role="cell" data-label="Date"></div>
         <div class="cell time-cell" role="cell" data-label="Time"></div>
-        <div class="cell foreman-cell" role="cell" data-label="Foreman"></div>
         <div class="cell employee-cell" role="cell" data-label="Employee"></div>
-        <div class="cell plate-cell" role="cell" data-label="Plate"></div>
+        <div class="cell plate-cell" role="cell" data-label="Vehicle">
+          <div class="abu-dhabi-plate">
+            <span class="plate-code"></span>
+            <span class="plate-emirate"><b lang="ar">الإمارات</b><small>U.A.E. A.D.</small></span>
+            <span class="plate-number"></span>
+          </div>
+        </div>
         <div class="cell service-cell" role="cell" data-label="Service"></div>
-        <div class="cell company-cell" role="cell" data-label="Company"></div>
-        <div class="cell price-cell" role="cell" data-label="Price"></div>
+        <div class="cell price-cell" role="cell" data-label="Price">
+          <img class="dirham-symbol" src="/dirham.svg" alt="AED">
+          <span class="price-value"></span>
+        </div>
       </article>
     </template>
 
