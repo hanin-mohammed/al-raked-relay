@@ -1,0 +1,10 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "liveDisplay": {
+      ".read": "auth != null",
+      ".indexOn": ["timestamp"]
+    }
+  }
+}
