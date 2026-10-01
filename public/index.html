@@ -27,8 +27,7 @@
 
       <section class="feed" aria-label="Latest ten service entries">
         <div class="feed-head" role="row" aria-hidden="true">
-          <span>Date</span>
-          <span>Time</span>
+          <span>Date &amp; time</span>
           <span>Employee</span>
           <span>Vehicle</span>
           <span>Service</span>
@@ -43,13 +42,14 @@
 
     <template id="entry-template">
       <article class="entry" role="row">
-        <div class="cell date-cell" role="cell" data-label="Date"></div>
-        <div class="cell time-cell" role="cell" data-label="Time"></div>
+        <div class="cell datetime-cell" role="cell" data-label="Date and time">
+          <span class="entry-date"></span>
+          <span class="entry-time"></span>
+        </div>
         <div class="cell employee-cell" role="cell" data-label="Employee"></div>
         <div class="cell plate-cell" role="cell" data-label="Vehicle">
           <div class="abu-dhabi-plate">
-            <span class="plate-code"></span>
-            <span class="plate-emirate"><b lang="ar">الإمارات</b><small>U.A.E. A.D.</small></span>
+            <span class="plate-code">AD</span>
             <span class="plate-number"></span>
           </div>
         </div>

@@ -1,15 +1,23 @@
+@font-face {
+  font-family: "Atkinson Hyperlegible Next";
+  src: url("/fonts/AtkinsonHyperlegibleNext.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
-  font-family: "Exo", ui-sans-serif, system-ui, sans-serif;
+  font-family: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, sans-serif;
   background: #fff;
   color: #17191e;
   --red: #e51e29;
   --deep-red: #a80714;
   --orange: #ff7a32;
-  --ink: #17191e;
+  --ink: #000;
   --muted: #69707d;
-  --line: #d9dde5;
-  --row-height: clamp(4.5rem, 7.7vh, 5.5rem);
+  --line: #b9bec7;
+  --row-height: clamp(5.15rem, 8.25vh, 5.65rem);
 }
 
 * {
@@ -62,29 +70,29 @@ body::after {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   height: 100dvh;
-  padding: clamp(0.75rem, 1.7vw, 2rem);
-  gap: clamp(0.65rem, 1.5vh, 1.2rem);
+  padding: clamp(0.55rem, 0.95vw, 1.15rem);
+  gap: clamp(0.45rem, 0.8vh, 0.7rem);
 }
 
 .display-header {
   display: flex;
-  min-height: clamp(3.8rem, 7.8vh, 5.25rem);
+  min-height: clamp(3rem, 5.3vh, 3.7rem);
   align-items: center;
   justify-content: space-between;
-  gap: 1.5rem;
-  padding: 0 clamp(0.25rem, 0.7vw, 0.75rem);
+  gap: 1rem;
+  padding: 0 clamp(0.2rem, 0.5vw, 0.55rem);
 }
 
 .brand {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: clamp(0.7rem, 1.3vw, 1.25rem);
+  gap: clamp(0.55rem, 0.9vw, 0.9rem);
 }
 
 .brand-logo {
-  width: clamp(3.25rem, 4.4vw, 5rem);
-  height: clamp(3.25rem, 4.4vw, 5rem);
+  width: clamp(2.65rem, 3.1vw, 3.55rem);
+  height: clamp(2.65rem, 3.1vw, 3.55rem);
   flex: 0 0 auto;
   border-radius: 24%;
   box-shadow: 0 0.45rem 1.4rem rgba(196, 17, 31, 0.2);
@@ -94,7 +102,7 @@ h1 {
   margin: 0;
   overflow: hidden;
   color: var(--deep-red);
-  font-size: clamp(1.3rem, 2.2vw, 2.75rem);
+  font-size: clamp(1.15rem, 1.72vw, 2.05rem);
   font-weight: 900;
   line-height: 1.05;
   letter-spacing: 0.035em;
@@ -107,7 +115,7 @@ h1 {
   flex: 0 0 auto;
   align-items: baseline;
   color: var(--ink);
-  font-size: clamp(1.3rem, 2.2vw, 2.75rem);
+  font-size: clamp(1.15rem, 1.72vw, 2.05rem);
   font-variant-numeric: tabular-nums;
   font-weight: 800;
   letter-spacing: 0.025em;
@@ -132,17 +140,17 @@ h1 {
 .feed-head,
 .entry {
   display: grid;
-  grid-template-columns: 1.05fr 0.85fr 1.5fr 2.45fr 1.55fr 1fr;
+  grid-template-columns: 1.1fr 2.15fr 1.85fr 1.65fr 1.35fr;
   align-items: stretch;
   padding: 0 clamp(0.7rem, 1.3vw, 1.5rem);
 }
 
 .feed-head {
-  min-height: clamp(3.2rem, 5.4vh, 4.15rem);
+  min-height: clamp(2.8rem, 4.8vh, 3.3rem);
   border-bottom: 2px solid var(--red);
   background: linear-gradient(90deg, #fff4f1, #fff 36%, #fff8f5);
-  color: #565d68;
-  font-size: clamp(0.86rem, 1.18vw, 1.35rem);
+  color: #000;
+  font-size: clamp(0.88rem, 1.12vw, 1.3rem);
   font-weight: 800;
   letter-spacing: 0.075em;
   text-transform: uppercase;
@@ -158,7 +166,11 @@ h1 {
 
 .feed-head > span + span,
 .entry > .cell + .cell {
-  border-left: 1px solid var(--line);
+  border-left: 1.5px solid var(--line);
+}
+
+.feed-head > span:nth-child(2) {
+  justify-content: center;
 }
 
 .entries {
@@ -174,10 +186,10 @@ h1 {
 .entry {
   min-height: var(--row-height);
   height: var(--row-height);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 2px solid var(--line);
   background: rgba(255, 255, 255, 0.92);
-  color: var(--ink);
-  font-size: clamp(1.05rem, 1.55vw, 1.85rem);
+  color: #000;
+  font-size: clamp(1.1rem, 1.6vw, 1.9rem);
   font-weight: 700;
   transition: transform 460ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -194,15 +206,29 @@ h1 {
   overflow: hidden;
 }
 
-.date-cell,
-.time-cell,
+.datetime-cell,
 .price-cell {
   font-variant-numeric: tabular-nums;
 }
 
-.date-cell,
-.time-cell {
-  color: #454b56;
+.datetime-cell {
+  flex-direction: column;
+  align-items: flex-start !important;
+  justify-content: center;
+  gap: 0.12em;
+  color: #000;
+  font-family: "Exo", ui-sans-serif, system-ui, sans-serif;
+  font-size: clamp(1rem, 1.38vw, 1.65rem);
+  line-height: 1.08;
+}
+
+.entry-date {
+  font-weight: 900;
+}
+
+.entry-time {
+  font-size: 0.8em;
+  font-weight: 700;
 }
 
 .employee-cell,
@@ -212,16 +238,27 @@ h1 {
   white-space: nowrap;
 }
 
+.employee-cell {
+  justify-content: center;
+  background: linear-gradient(135deg, #ae0010 0%, #e51e29 58%, #ff6238 100%);
+  color: #fff;
+  font-size: clamp(1.85rem, 2.65vw, 3.15rem);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(91, 0, 8, 0.35);
+}
+
 .plate-cell {
   justify-content: center;
 }
 
 .abu-dhabi-plate {
   display: grid;
-  width: min(100%, 18rem);
+  width: min(100%, 15.5rem);
   min-width: 0;
-  height: clamp(2.55rem, 4.65vh, 3.65rem);
-  grid-template-columns: clamp(2.5rem, 3.5vw, 3.75rem) clamp(3.2rem, 4.4vw, 4.6rem) minmax(0, 1fr);
+  height: clamp(3rem, 5.3vh, 3.75rem);
+  grid-template-columns: clamp(3.25rem, 4.15vw, 4.6rem) minmax(0, 1fr);
   overflow: hidden;
   border: clamp(1.5px, 0.13vw, 2.5px) solid #202124;
   border-radius: 0.35rem;
@@ -230,7 +267,6 @@ h1 {
 }
 
 .plate-code,
-.plate-emirate,
 .plate-number {
   display: flex;
   align-items: center;
@@ -240,30 +276,10 @@ h1 {
 .plate-code {
   background: linear-gradient(150deg, #f21f2d, #b70714);
   color: #fff;
-  font-size: clamp(1.1rem, 1.65vw, 2rem);
+  font-size: clamp(1.45rem, 2vw, 2.4rem);
   font-weight: 900;
   line-height: 1;
   text-shadow: 0 1px 1px rgba(86, 0, 7, 0.45);
-}
-
-.plate-emirate {
-  flex-direction: column;
-  border-right: 1px solid #c8cbd0;
-  color: #242529;
-  line-height: 0.94;
-}
-
-.plate-emirate b {
-  font-family: Arial, sans-serif;
-  font-size: clamp(0.48rem, 0.62vw, 0.72rem);
-}
-
-.plate-emirate small {
-  margin-top: 0.17rem;
-  font-family: Arial, sans-serif;
-  font-size: clamp(0.34rem, 0.43vw, 0.48rem);
-  font-weight: 700;
-  white-space: nowrap;
 }
 
 .plate-number {
@@ -271,8 +287,7 @@ h1 {
   padding: 0 0.28rem;
   overflow: hidden;
   color: #090a0c;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: clamp(1.4rem, 2.4vw, 2.8rem);
+  font-size: clamp(1.85rem, 2.75vw, 3.25rem);
   font-weight: 900;
   letter-spacing: 0.01em;
   line-height: 1;
@@ -283,15 +298,19 @@ h1 {
 .price-cell {
   justify-content: flex-end;
   gap: clamp(0.35rem, 0.55vw, 0.65rem);
-  color: var(--deep-red);
-  font-weight: 900;
+  color: #000;
+  font-weight: 800;
+}
+
+.entry .price-cell {
+  font-size: clamp(2rem, 3vw, 3.55rem);
 }
 
 .dirham-symbol {
   width: 0.92em;
   height: 0.92em;
   flex: 0 0 auto;
-  filter: invert(13%) sepia(98%) saturate(4708%) hue-rotate(348deg) brightness(79%) contrast(103%);
+  filter: none;
 }
 
 .price-cell[data-free="true"] .dirham-symbol {
@@ -399,7 +418,7 @@ h1 {
     height: 9.5rem;
     min-height: 9.5rem;
     grid-template-columns: 1fr 1fr;
-    grid-template-rows: 2.35rem 4.6rem 2.55rem;
+    grid-template-rows: 2.55rem 3.25rem 3.7rem;
     padding: 0;
     font-size: 1rem;
   }
@@ -409,28 +428,25 @@ h1 {
     border-left: 0;
   }
 
-  .date-cell {
+  .datetime-cell {
     grid-column: 1;
     grid-row: 1;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .time-cell {
-    grid-column: 2;
-    grid-row: 1;
-    justify-content: flex-end;
+    flex-direction: row;
+    align-items: center !important;
+    gap: 0.45rem;
     border-bottom: 1px solid var(--line);
   }
 
   .employee-cell {
-    grid-column: 1;
-    grid-row: 3;
-  }
-
-  .plate-cell {
     grid-column: 1 / -1;
     grid-row: 2;
     border-bottom: 1px solid var(--line);
+    font-size: 1.65rem;
+  }
+
+  .plate-cell {
+    grid-column: 1;
+    grid-row: 3;
     border-left: 0;
     border-right: 0;
   }
@@ -444,23 +460,18 @@ h1 {
   }
 
   .price-cell {
-    position: absolute;
-    z-index: 2;
-    top: 3.35rem;
-    right: 0.65rem;
-    min-width: 4.2rem;
+    grid-column: 2;
+    grid-row: 1;
     justify-content: center;
-    border: 0 !important;
-    border-radius: 0.5rem;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 0.15rem 0.6rem rgba(35, 23, 24, 0.18);
+    border-bottom: 1px solid var(--line);
+    border-left: 1px solid var(--line) !important;
+    font-size: 1.45rem;
   }
 
   .abu-dhabi-plate {
-    width: min(100%, 18rem);
+    width: min(100%, 10.5rem);
     height: 3.15rem;
-    margin-right: 3.85rem;
-    grid-template-columns: 3rem 4rem minmax(0, 1fr);
+    grid-template-columns: 3rem minmax(0, 1fr);
   }
 
   .plate-code {

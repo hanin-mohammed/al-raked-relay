@@ -30,13 +30,13 @@ function displayDate(value) {
   }).format(date);
 }
 
-function plateParts(value) {
+function plateNumber(value) {
   const plate = String(value || "-").trim();
   const parts = plate.split(/[\s\-/]+/).filter(Boolean);
-  if (parts.length > 1) {
-    return { code: parts[0].toUpperCase(), number: parts.slice(1).join(" ").toUpperCase() };
+  if (parts.length > 1 && parts[0].length <= 2) {
+    return parts.slice(1).join(" ").toUpperCase();
   }
-  return { code: "AD", number: plate.toUpperCase() };
+  return plate.toUpperCase();
 }
 
 function updateClock() {
@@ -59,18 +59,17 @@ function makeEntryNode(entry, isNew) {
   node.dataset.id = entry.id;
   if (isNew) node.classList.add("is-new");
 
-  fillCell(node, ".date-cell", displayDate(entry.timestamp));
-  fillCell(node, ".time-cell", displayTime(entry.timestamp));
+  fillCell(node, ".entry-date", displayDate(entry.timestamp));
+  fillCell(node, ".entry-time", displayTime(entry.timestamp));
   fillCell(node, ".employee-cell", entry.employee);
   fillCell(node, ".service-cell", entry.service);
   fillCell(node, ".price-value", entry.price);
 
-  const plate = plateParts(entry.licensePlate);
-  fillCell(node, ".plate-code", plate.code);
-  fillCell(node, ".plate-number", plate.number);
+  const number = plateNumber(entry.licensePlate);
+  fillCell(node, ".plate-number", number);
   node.querySelector(".abu-dhabi-plate").setAttribute(
     "aria-label",
-    `Abu Dhabi plate ${plate.code} ${plate.number}`,
+    `Abu Dhabi plate ${number}`,
   );
 
   node.querySelector(".price-cell").dataset.free = String(entry.price).toLowerCase() === "free";
