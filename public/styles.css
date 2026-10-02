@@ -12,6 +12,14 @@
   --row-height: clamp(5.15rem, 8.25vh, 5.65rem);
 }
 
+@font-face {
+  font-family: "KO Pilot";
+  src: url("/fonts/KOPilot-Regular.otf") format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -259,8 +267,9 @@ h1 {
 }
 
 .clock-hijri-date {
-  font-size: 0.78em;
-  font-weight: 800;
+  font-family: "KO Pilot", "Manrope", sans-serif;
+  font-size: calc(0.9em + 10px);
+  font-weight: 400;
   letter-spacing: 0;
 }
 
@@ -290,7 +299,7 @@ h1 {
 .feed-head,
 .entry {
   display: grid;
-  grid-template-columns: 1.05fr 2.15fr 1.75fr 2.25fr 1.1fr 1.5fr;
+  grid-template-columns: 1.05fr 2.15fr 1.75fr 2.25fr 0.98fr 1.62fr;
   align-items: stretch;
   padding: 0 0 0 clamp(0.7rem, 1.3vw, 1.5rem);
 }
@@ -392,14 +401,16 @@ h1 {
   letter-spacing: 0.045em;
   line-height: 0.95;
   text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .sound-prompt {
   position: fixed;
   z-index: 3000;
-  right: clamp(0.8rem, 2vw, 1.8rem);
-  bottom: clamp(0.8rem, 2vw, 1.8rem);
+  top: 50%;
+  left: 50%;
   opacity: 1;
+  transform: translate(-50%, -50%);
   transition: opacity 220ms ease, visibility 220ms ease;
   visibility: visible;
 }
@@ -413,9 +424,10 @@ h1 {
 .sound-enable {
   display: flex;
   align-items: center;
-  gap: 0.8rem;
-  min-width: min(24rem, calc(100vw - 1.6rem));
-  padding: 0.9rem 1.1rem;
+  gap: 1rem;
+  min-width: min(29rem, calc(100vw - 1.6rem));
+  min-height: 5.4rem;
+  padding: 1.05rem 1.3rem;
   border: 2px solid rgba(255, 255, 255, 0.82);
   border-radius: 0.9rem;
   background: #0b1f3a;
@@ -433,13 +445,13 @@ h1 {
 
 .sound-enable-icon {
   display: grid;
-  width: 2.7rem;
-  height: 2.7rem;
+  width: 3.25rem;
+  height: 3.25rem;
   flex: 0 0 auto;
   place-items: center;
   border-radius: 50%;
   background: #2f6fd6;
-  font-size: 1.6rem;
+  font-size: 1.9rem;
   font-weight: 900;
 }
 
@@ -449,14 +461,14 @@ h1 {
 }
 
 .sound-enable strong {
-  font-size: 1rem;
+  font-size: 1.12rem;
   font-weight: 800;
 }
 
 .sound-enable small {
   margin-top: 0.14rem;
   color: #dce8fb;
-  font-size: 0.76rem;
+  font-size: 0.84rem;
   font-weight: 600;
 }
 
