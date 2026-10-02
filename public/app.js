@@ -11,8 +11,11 @@ const promoVideos = Array.from(document.querySelectorAll(".promo-video"));
 const readyAlert = document.getElementById("ready-alert");
 const readyAlertPlate = document.getElementById("ready-alert-plate");
 
+const PROMO_INITIAL_DELAY_MS = 20_000;
 const PROMO_INTERVAL_MS = 90_000;
+const PROMO_RESUME_DELAY_MS = 20_000;
 const PROMO_CROSSFADE_MS = 900;
+const PROMO_STALL_TIMEOUT_MS = 7_000;
 const READY_ALERT_DURATION_MS = 6_500;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
@@ -28,6 +31,7 @@ const promoState = {
   intervalTimer: null,
   holdTimer: null,
   cleanupTimer: null,
+  stallTimer: null,
   running: false,
 };
 
@@ -97,9 +101,9 @@ function updateClock() {
   clockMinutes.textContent = parts.find((part) => part.type === "minute")?.value || "00";
 }
 
-function schedulePromo() {
+function schedulePromo(delay = PROMO_INTERVAL_MS) {
   window.clearTimeout(promoState.intervalTimer);
-  promoState.intervalTimer = window.setTimeout(startPromo, PROMO_INTERVAL_MS);
+  promoState.intervalTimer = window.setTimeout(startPromo, delay);
 }
 
 function postponePromoForLiveUpdate() {
@@ -115,7 +119,7 @@ function postponePromoForLiveUpdate() {
       (promoState.sequenceIndex + 1) % PROMO_SEQUENCES.length;
   }
 
-  schedulePromo();
+  schedulePromo(PROMO_RESUME_DELAY_MS);
 }
 
 function currentPromoSequence() {
@@ -123,6 +127,7 @@ function currentPromoSequence() {
 }
 
 function resetPromoVideos() {
+  window.clearTimeout(promoState.stallTimer);
   promoVideos.forEach((video) => {
     video.pause();
     video.classList.remove("is-active");
@@ -130,6 +135,21 @@ function resetPromoVideos() {
   });
   promoState.activeIndex = -1;
   promoState.sequencePosition = -1;
+}
+
+function clearPromoStallTimer() {
+  window.clearTimeout(promoState.stallTimer);
+  promoState.stallTimer = null;
+}
+
+function armPromoStallTimer(index) {
+  if (!promoState.running || index !== promoState.activeIndex) return;
+  clearPromoStallTimer();
+  promoState.stallTimer = window.setTimeout(() => {
+    promoState.stallTimer = null;
+    if (!promoState.running || index !== promoState.activeIndex) return;
+    advancePromo(index);
+  }, PROMO_STALL_TIMEOUT_MS);
 }
 
 function playVideoWhenReady(video) {
@@ -235,6 +255,7 @@ function crossfadePromo(fromIndex, toIndex) {
 
 function handlePromoEnded(index) {
   if (!promoState.running || index !== promoState.activeIndex) return;
+  clearPromoStallTimer();
 
   const sequence = currentPromoSequence();
   const isLastVideo = promoState.sequencePosition === sequence.videoIndexes.length - 1;
@@ -248,6 +269,7 @@ function handlePromoEnded(index) {
 
 function advancePromo(index) {
   if (!promoState.running || index !== promoState.activeIndex) return;
+  clearPromoStallTimer();
   const sequence = currentPromoSequence();
   const nextPosition = promoState.sequencePosition + 1;
   if (nextPosition < sequence.videoIndexes.length) {
@@ -261,6 +283,7 @@ function advancePromo(index) {
 function finishPromo() {
   window.clearTimeout(promoState.holdTimer);
   window.clearTimeout(promoState.cleanupTimer);
+  clearPromoStallTimer();
   promoPlayer.classList.remove("is-visible");
 
   promoState.cleanupTimer = window.setTimeout(() => {
@@ -276,6 +299,10 @@ function initPromoPlayer() {
     video.defaultMuted = true;
     video.addEventListener("ended", () => handlePromoEnded(index));
     video.addEventListener("error", () => advancePromo(index));
+    video.addEventListener("playing", clearPromoStallTimer);
+    video.addEventListener("canplay", clearPromoStallTimer);
+    video.addEventListener("waiting", () => armPromoStallTimer(index));
+    video.addEventListener("stalled", () => armPromoStallTimer(index));
     video.load();
   });
 
@@ -285,7 +312,7 @@ function initPromoPlayer() {
     }
   });
 
-  schedulePromo();
+  schedulePromo(PROMO_INITIAL_DELAY_MS);
 }
 
 function entryIsReady(entry) {
