@@ -20,7 +20,10 @@
           <h1 id="display-title">AL RAKED CAR WASHING STATION</h1>
         </div>
         <div class="clock" aria-label="Current date and time">
-          <span id="clock-date" class="clock-date">02 OCT</span>
+          <span class="clock-calendar">
+            <span id="clock-date" class="clock-date">02 OCT</span>
+            <span id="clock-hijri-date" class="clock-hijri-date" lang="ar" dir="rtl">٢١ ربيع الآخر</span>
+          </span>
           <span class="clock-time">
             <span id="clock-hours">00</span><span class="clock-colon" aria-hidden="true">:</span><span id="clock-minutes">00</span>
           </span>
@@ -47,6 +50,8 @@
     <section id="promo-player" class="promo-player" aria-hidden="true">
       <video id="promo-video" class="promo-video" muted playsinline preload="metadata" disablepictureinpicture></video>
     </section>
+
+    <audio id="ready-chime" src="/media/ready-chime.mp3" preload="auto"></audio>
 
     <template id="entry-template">
       <article class="entry" role="row">

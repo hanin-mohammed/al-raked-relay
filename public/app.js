@@ -4,10 +4,12 @@ const entryTemplate = document.getElementById("entry-template");
 const connection = document.querySelector(".connection");
 const connectionText = document.getElementById("connection-text");
 const clockDate = document.getElementById("clock-date");
+const clockHijriDate = document.getElementById("clock-hijri-date");
 const clockHours = document.getElementById("clock-hours");
 const clockMinutes = document.getElementById("clock-minutes");
 const promoPlayer = document.getElementById("promo-player");
 const promoVideo = document.getElementById("promo-video");
+const readyChime = document.getElementById("ready-chime");
 const readyAlert = document.getElementById("ready-alert");
 const readyAlertPlate = document.getElementById("ready-alert-plate");
 
@@ -107,9 +109,40 @@ function updateClock() {
     month: "short",
     timeZone: "Asia/Dubai",
   }).format(now).toUpperCase();
+  clockHijriDate.textContent = new Intl.DateTimeFormat(
+    "ar-AE-u-ca-islamic-umalqura-nu-arab",
+    {
+      day: "numeric",
+      month: "long",
+      timeZone: "Asia/Dubai",
+    },
+  ).format(now);
   clockHours.textContent = parts.find((part) => part.type === "hour")?.value || "00";
   clockMinutes.textContent = parts.find((part) => part.type === "minute")?.value || "00";
 }
+
+let readyChimePrimed = false;
+
+function primeReadyChime() {
+  if (readyChimePrimed) return;
+  const previousVolume = readyChime.volume;
+  readyChime.volume = 0;
+  readyChime.currentTime = 0;
+  readyChime.play()
+    .then(() => {
+      readyChime.pause();
+      readyChime.currentTime = 0;
+      readyChime.volume = previousVolume;
+      readyChimePrimed = true;
+    })
+    .catch(() => {
+      readyChime.volume = previousVolume;
+    });
+}
+
+document.addEventListener("pointerdown", primeReadyChime, { once: true });
+document.addEventListener("touchstart", primeReadyChime, { once: true, passive: true });
+document.addEventListener("keydown", primeReadyChime, { once: true });
 
 function schedulePromo(delay = PROMO_INTERVAL_MS) {
   window.clearTimeout(promoState.intervalTimer);
@@ -457,6 +490,11 @@ function showNextReadyAlert() {
   readyAlertPlate.textContent = String(entry.licensePlate || "Vehicle").trim();
   readyAlert.setAttribute("aria-hidden", "false");
   requestAnimationFrame(() => readyAlert.classList.add("is-visible"));
+  readyChime.volume = 1;
+  readyChime.currentTime = 0;
+  readyChime.play().catch((error) => {
+    console.warn("Ready chime could not play automatically.", error);
+  });
 
   readyAlertState.timer = window.setTimeout(() => {
     readyAlert.classList.remove("is-visible");
