@@ -187,8 +187,13 @@ body::after {
 .display {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  height: 100vh;
   height: 100dvh;
-  padding: clamp(0.55rem, 0.95vw, 1.15rem);
+  padding:
+    max(clamp(0.65rem, 1.25vw, 1.5rem), env(safe-area-inset-top))
+    max(clamp(0.65rem, 1.25vw, 1.5rem), env(safe-area-inset-right))
+    max(clamp(0.65rem, 1.25vw, 1.5rem), env(safe-area-inset-bottom))
+    max(clamp(0.65rem, 1.25vw, 1.5rem), env(safe-area-inset-left));
   gap: clamp(0.45rem, 0.8vh, 0.7rem);
 }
 
@@ -257,6 +262,8 @@ h1 {
 }
 
 .feed {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   overflow: hidden;
   border: 1px solid rgba(183, 188, 199, 0.72);
@@ -304,7 +311,9 @@ h1 {
 }
 
 .entries {
+  display: grid;
   min-height: 0;
+  grid-template-rows: repeat(10, minmax(0, 1fr));
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -315,8 +324,8 @@ h1 {
 
 .entry {
   position: relative;
-  min-height: var(--row-height);
-  height: var(--row-height);
+  min-height: 0;
+  height: auto;
   border-bottom: 2px solid var(--line);
   background: rgba(255, 255, 255, 0.92);
   color: #000;
@@ -666,6 +675,80 @@ h1 {
   }
   to {
     transform: translateX(calc(-1 * var(--scroll-distance)));
+  }
+}
+
+@media (min-width: 721px) and (max-height: 820px) {
+  .display {
+    gap: clamp(0.3rem, 0.65vh, 0.48rem);
+  }
+
+  .display-header {
+    min-height: clamp(2.65rem, 6vh, 3.15rem);
+  }
+
+  .brand-logo {
+    width: clamp(2.35rem, 2.7vw, 2.9rem);
+    height: clamp(2.35rem, 2.7vw, 2.9rem);
+  }
+
+  h1,
+  .clock {
+    font-size: clamp(1.05rem, 1.48vw, 1.55rem);
+  }
+
+  .feed-head,
+  .entry {
+    padding-inline: clamp(0.35rem, 0.75vw, 0.8rem);
+  }
+
+  .feed-head {
+    min-height: clamp(2.35rem, 5.4vh, 2.75rem);
+    font-size: clamp(0.82rem, 1.05vw, 1.08rem);
+  }
+
+  .feed-head > span,
+  .entry > .cell {
+    padding-inline: clamp(0.28rem, 0.62vw, 0.68rem);
+  }
+
+  .datetime-cell {
+    font-size: clamp(1rem, 1.3vw, 1.42rem);
+  }
+
+  .employee-cell {
+    font-size: clamp(1.42rem, 2vw, 2.05rem);
+  }
+
+  .service-cell {
+    font-size: clamp(1.08rem, 1.55vw, 1.7rem);
+  }
+
+  .entry .price-cell {
+    font-size: clamp(1.45rem, 2.15vw, 2.25rem);
+  }
+
+  .status-value {
+    font-size: clamp(0.76rem, 0.98vw, 1.05rem);
+  }
+
+  .vehicle-plate {
+    width: min(100%, 13.25rem);
+    height: clamp(2.4rem, 5.6vh, 2.85rem);
+    grid-template-columns: clamp(2.8rem, 3.5vw, 3.7rem) minmax(0, 1fr);
+  }
+
+  .vehicle-plate.is-dubai {
+    grid-template-columns: clamp(3rem, 3.75vw, 4rem) minmax(0, 1fr);
+  }
+
+  .plate-code {
+    font-size: clamp(1.2rem, 1.6vw, 1.7rem);
+  }
+
+  .plate-number,
+  .vehicle-plate.is-dubai .plate-number {
+    font-size: clamp(1.65rem, 2.3vw, 2.45rem);
   }
 }
 
