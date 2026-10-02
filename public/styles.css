@@ -386,12 +386,78 @@ h1 {
 
 .status-value {
   display: block;
-  font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
-  font-size: clamp(1.2rem, 1.7vw, 2rem);
+  font-family: "Exo", "Manrope", sans-serif;
+  font-size: clamp(1.35rem, 1.9vw, 2.2rem);
   font-weight: 900;
   letter-spacing: 0.045em;
   line-height: 0.95;
   text-transform: uppercase;
+}
+
+.sound-prompt {
+  position: fixed;
+  z-index: 3000;
+  right: clamp(0.8rem, 2vw, 1.8rem);
+  bottom: clamp(0.8rem, 2vw, 1.8rem);
+  opacity: 1;
+  transition: opacity 220ms ease, visibility 220ms ease;
+  visibility: visible;
+}
+
+.sound-prompt.is-hidden {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.sound-enable {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-width: min(24rem, calc(100vw - 1.6rem));
+  padding: 0.9rem 1.1rem;
+  border: 2px solid rgba(255, 255, 255, 0.82);
+  border-radius: 0.9rem;
+  background: #0b1f3a;
+  box-shadow: 0 0.7rem 2rem rgba(8, 20, 39, 0.3);
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sound-enable:focus-visible {
+  outline: 4px solid #68a7ff;
+  outline-offset: 3px;
+}
+
+.sound-enable-icon {
+  display: grid;
+  width: 2.7rem;
+  height: 2.7rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  background: #2f6fd6;
+  font-size: 1.6rem;
+  font-weight: 900;
+}
+
+.sound-enable strong,
+.sound-enable small {
+  display: block;
+}
+
+.sound-enable strong {
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.sound-enable small {
+  margin-top: 0.14rem;
+  color: #dce8fb;
+  font-size: 0.76rem;
+  font-weight: 600;
 }
 
 .status-cell[data-ready="true"] {
@@ -744,7 +810,7 @@ h1 {
   }
 
   .status-value {
-    font-size: clamp(1.05rem, 1.5vw, 1.45rem);
+    font-size: clamp(1.2rem, 1.7vw, 1.65rem);
   }
 
   .vehicle-plate {
@@ -881,7 +947,7 @@ h1 {
   }
 
   .status-value {
-    font-size: 1.25rem;
+    font-size: 1.4rem;
   }
 
   .vehicle-plate {

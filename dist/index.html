@@ -9,7 +9,7 @@
     <link rel="icon" type="image/png" href="/raked-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Exo:wght@700;800;900&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
@@ -52,6 +52,16 @@
     </section>
 
     <audio id="ready-chime" src="/media/ready-chime.mp3" preload="auto"></audio>
+
+    <aside id="sound-prompt" class="sound-prompt" aria-label="Enable completion sounds">
+      <button id="sound-enable" class="sound-enable" type="button">
+        <span class="sound-enable-icon" aria-hidden="true">♪</span>
+        <span>
+          <strong>Press OK to enable sound</strong>
+          <small>Completion chimes will play on this TV</small>
+        </span>
+      </button>
+    </aside>
 
     <template id="entry-template">
       <article class="entry" role="row">

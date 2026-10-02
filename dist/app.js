@@ -10,6 +10,8 @@ const clockMinutes = document.getElementById("clock-minutes");
 const promoPlayer = document.getElementById("promo-player");
 const promoVideo = document.getElementById("promo-video");
 const readyChime = document.getElementById("ready-chime");
+const soundPrompt = document.getElementById("sound-prompt");
+const soundEnable = document.getElementById("sound-enable");
 const readyAlert = document.getElementById("ready-alert");
 const readyAlertPlate = document.getElementById("ready-alert-plate");
 
@@ -22,6 +24,8 @@ const PROMO_RETRY_DELAY_MS = 350;
 const READY_ALERT_DURATION_MS = 6_500;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
+// Set this to false to remove the chime and its TV activation prompt.
+const READY_CHIME_ENABLED = true;
 const DEFAULT_PROMO_GROUPS = [
   {
     videos: ["/media/promo-1.mp4", "/media/promo-2.mp4", "/media/promo-3.mp4"],
@@ -121,28 +125,78 @@ function updateClock() {
   clockMinutes.textContent = parts.find((part) => part.type === "minute")?.value || "00";
 }
 
-let readyChimePrimed = false;
+let readyAudioContext = null;
+let readyChimeBuffer = null;
+let readyChimeUnlockPromise = null;
 
-function primeReadyChime() {
-  if (readyChimePrimed) return;
-  const previousVolume = readyChime.volume;
-  readyChime.volume = 0;
-  readyChime.currentTime = 0;
-  readyChime.play()
-    .then(() => {
-      readyChime.pause();
-      readyChime.currentTime = 0;
-      readyChime.volume = previousVolume;
-      readyChimePrimed = true;
-    })
-    .catch(() => {
-      readyChime.volume = previousVolume;
-    });
+function setSoundPromptVisible(visible) {
+  soundPrompt.classList.toggle("is-hidden", !visible);
+  soundPrompt.setAttribute("aria-hidden", String(!visible));
 }
 
-document.addEventListener("pointerdown", primeReadyChime, { once: true });
-document.addEventListener("touchstart", primeReadyChime, { once: true, passive: true });
-document.addEventListener("keydown", primeReadyChime, { once: true });
+async function enableReadyChime() {
+  if (!READY_CHIME_ENABLED || readyChimeBuffer) return;
+  if (readyChimeUnlockPromise) return readyChimeUnlockPromise;
+
+  readyChimeUnlockPromise = (async () => {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("Web Audio is unavailable");
+
+    readyAudioContext ||= new AudioContextClass();
+    await readyAudioContext.resume();
+    const response = await fetch(readyChime.currentSrc || readyChime.src, {
+      cache: "force-cache",
+    });
+    if (!response.ok) throw new Error(`Chime request returned HTTP ${response.status}`);
+    readyChimeBuffer = await readyAudioContext.decodeAudioData(
+      await response.arrayBuffer(),
+    );
+    setSoundPromptVisible(false);
+  })();
+
+  try {
+    await readyChimeUnlockPromise;
+  } catch (error) {
+    console.warn("Completion sound could not be enabled.", error);
+    setSoundPromptVisible(true);
+  } finally {
+    readyChimeUnlockPromise = null;
+  }
+}
+
+function playReadyChime() {
+  if (!READY_CHIME_ENABLED) return;
+
+  if (readyAudioContext && readyChimeBuffer) {
+    readyAudioContext.resume()
+      .then(() => {
+        const source = readyAudioContext.createBufferSource();
+        source.buffer = readyChimeBuffer;
+        source.connect(readyAudioContext.destination);
+        source.start(0);
+      })
+      .catch((error) => {
+        console.warn("Ready chime could not play.", error);
+        setSoundPromptVisible(true);
+      });
+    return;
+  }
+
+  readyChime.volume = 1;
+  readyChime.currentTime = 0;
+  readyChime.play().catch((error) => {
+    console.warn("Ready chime needs TV permission.", error);
+    setSoundPromptVisible(true);
+  });
+}
+
+if (READY_CHIME_ENABLED) {
+  setSoundPromptVisible(true);
+  soundEnable.addEventListener("click", enableReadyChime);
+  window.setTimeout(() => soundEnable.focus(), 250);
+} else {
+  setSoundPromptVisible(false);
+}
 
 function schedulePromo(delay = PROMO_INTERVAL_MS) {
   window.clearTimeout(promoState.intervalTimer);
@@ -490,11 +544,7 @@ function showNextReadyAlert() {
   readyAlertPlate.textContent = String(entry.licensePlate || "Vehicle").trim();
   readyAlert.setAttribute("aria-hidden", "false");
   requestAnimationFrame(() => readyAlert.classList.add("is-visible"));
-  readyChime.volume = 1;
-  readyChime.currentTime = 0;
-  readyChime.play().catch((error) => {
-    console.warn("Ready chime could not play automatically.", error);
-  });
+  playReadyChime();
 
   readyAlertState.timer = window.setTimeout(() => {
     readyAlert.classList.remove("is-visible");
