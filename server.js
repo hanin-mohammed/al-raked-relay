@@ -1,6 +1,7 @@
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const HOST = process.env.AL_RAKED_DISPLAY_HOST || "0.0.0.0";
 const PORT = Number(process.env.AL_RAKED_DISPLAY_PORT || 4173);
@@ -16,6 +17,7 @@ const contentTypes = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mp4": "video/mp4",
   ".svg": "image/svg+xml",
 };
 
@@ -47,6 +49,10 @@ function normalizeTimestamp(value) {
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 }
 
+function normalizeBoolean(value) {
+  return value === true || String(value ?? "").toLowerCase() === "true";
+}
+
 function normalizeEntry(input) {
   return {
     id: cleanText(input.id, 100) || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
@@ -57,6 +63,13 @@ function normalizeEntry(input) {
     service: cleanText(input.service) || "-",
     company: cleanText(input.company) || "-",
     price: normalizePrice(input.price),
+    ready: normalizeBoolean(input.ready),
+    readyAt: normalizeBoolean(input.ready)
+      ? normalizeTimestamp(input.readyAt || new Date())
+      : null,
+    readyEventId: normalizeBoolean(input.ready)
+      ? cleanText(input.readyEventId, 100) || crypto.randomUUID()
+      : null,
   };
 }
 
@@ -88,7 +101,7 @@ function receiveJson(request) {
   });
 }
 
-function serveFile(response, pathname) {
+function serveFile(request, response, pathname) {
   const relativePath = pathname === "/" ? "index.html" : pathname.slice(1);
   const requestedPath = path.resolve(PUBLIC_DIR, relativePath);
 
@@ -97,17 +110,67 @@ function serveFile(response, pathname) {
     return;
   }
 
-  fs.readFile(requestedPath, (error, data) => {
+  fs.stat(requestedPath, (error, stats) => {
     if (error) {
       sendJson(response, error.code === "ENOENT" ? 404 : 500, { error: "Not found" });
       return;
     }
 
-    response.writeHead(200, {
-      "Content-Type": contentTypes[path.extname(requestedPath)] || "application/octet-stream",
-      "Cache-Control": "no-store",
-    });
-    response.end(data);
+    if (!stats.isFile()) {
+      sendJson(response, 404, { error: "Not found" });
+      return;
+    }
+
+    const contentType = contentTypes[path.extname(requestedPath)] || "application/octet-stream";
+    const range = request.headers.range;
+    let start = 0;
+    let end = stats.size - 1;
+
+    if (range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+      if (!match) {
+        response.writeHead(416, { "Content-Range": `bytes */${stats.size}` });
+        response.end();
+        return;
+      }
+
+      if (!match[1] && match[2]) {
+        const suffixLength = Math.min(Number(match[2]), stats.size);
+        start = stats.size - suffixLength;
+      } else {
+        start = Number(match[1] || 0);
+        end = match[2] ? Number(match[2]) : end;
+      }
+
+      if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start || start >= stats.size) {
+        response.writeHead(416, { "Content-Range": `bytes */${stats.size}` });
+        response.end();
+        return;
+      }
+
+      end = Math.min(end, stats.size - 1);
+      response.writeHead(206, {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "no-store",
+        "Content-Length": end - start + 1,
+        "Content-Range": `bytes ${start}-${end}/${stats.size}`,
+        "Content-Type": contentType,
+      });
+    } else {
+      response.writeHead(200, {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": "no-store",
+        "Content-Length": stats.size,
+        "Content-Type": contentType,
+      });
+    }
+
+    if (request.method === "HEAD") {
+      response.end();
+      return;
+    }
+
+    fs.createReadStream(requestedPath, { start, end }).pipe(response);
   });
 }
 
@@ -157,8 +220,38 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
-  if (request.method === "GET") {
-    serveFile(response, url.pathname);
+  const statusPathMatch = /^\/api\/entries\/([^/]+)\/status$/.exec(url.pathname);
+  if (request.method === "PATCH" && statusPathMatch) {
+    if (request.headers["x-al-raked-feed-key"] !== FEED_KEY) {
+      sendJson(response, 401, { error: "Invalid feed key" });
+      return;
+    }
+
+    try {
+      const entryId = decodeURIComponent(statusPathMatch[1]);
+      const entry = entries.find((candidate) => candidate.id === entryId);
+      if (!entry) {
+        sendJson(response, 404, { error: "Entry not found" });
+        return;
+      }
+
+      const body = await receiveJson(request);
+      const nextReady = normalizeBoolean(body.ready);
+      if (entry.ready !== nextReady) {
+        entry.ready = nextReady;
+        entry.readyAt = entry.ready ? new Date().toISOString() : null;
+        entry.readyEventId = entry.ready ? crypto.randomUUID() : null;
+      }
+      broadcast("status", { entry, entries });
+      sendJson(response, 200, { ok: true, entry });
+    } catch (error) {
+      sendJson(response, 400, { error: error.message });
+    }
+    return;
+  }
+
+  if (request.method === "GET" || request.method === "HEAD") {
+    serveFile(request, response, url.pathname);
     return;
   }
 

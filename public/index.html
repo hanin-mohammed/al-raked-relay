@@ -9,7 +9,7 @@
     <link rel="icon" type="image/png" href="/raked-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Exo:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
@@ -19,19 +19,23 @@
           <img class="brand-logo" src="/raked-icon.png" alt="">
           <h1 id="display-title">AL RAKED CAR WASHING STATION</h1>
         </div>
-        <div class="clock" aria-label="Current time">
-          <span id="clock-hours">00</span><span class="clock-colon" aria-hidden="true">:</span><span id="clock-minutes">00</span>
+        <div class="clock" aria-label="Current date and time">
+          <span id="clock-date" class="clock-date">02 OCT</span>
+          <span class="clock-time">
+            <span id="clock-hours">00</span><span class="clock-colon" aria-hidden="true">:</span><span id="clock-minutes">00</span>
+          </span>
         </div>
         <div class="connection sr-only" aria-live="polite"><span id="connection-text">Connecting</span></div>
       </header>
 
       <section class="feed" aria-label="Latest ten service entries">
         <div class="feed-head" role="row" aria-hidden="true">
-          <span>Date &amp; time</span>
+          <span>Time</span>
           <span>Employee</span>
           <span>Vehicle</span>
           <span>Service</span>
           <span class="price-cell">Price</span>
+          <span>Status</span>
         </div>
         <div id="entries" class="entries" role="rowgroup" aria-live="polite"></div>
         <div id="empty-state" class="empty-state">
@@ -40,26 +44,47 @@
       </section>
     </main>
 
+    <section id="promo-player" class="promo-player" aria-hidden="true">
+      <video class="promo-video" src="/media/promo-1.mp4" muted playsinline preload="auto" disablepictureinpicture></video>
+      <video class="promo-video" src="/media/promo-2.mp4" muted playsinline preload="auto" disablepictureinpicture></video>
+      <video class="promo-video" src="/media/promo-3.mp4" muted playsinline preload="auto" disablepictureinpicture></video>
+      <video class="promo-video" src="/media/oil.mp4" muted playsinline preload="auto" disablepictureinpicture></video>
+    </section>
+
     <template id="entry-template">
       <article class="entry" role="row">
-        <div class="cell datetime-cell" role="cell" data-label="Date and time">
-          <span class="entry-date"></span>
+        <div class="cell datetime-cell" role="cell" data-label="Time">
           <span class="entry-time"></span>
         </div>
-        <div class="cell employee-cell" role="cell" data-label="Employee"></div>
+        <div class="cell employee-cell scrollable-cell" role="cell" data-label="Employee"></div>
         <div class="cell plate-cell" role="cell" data-label="Vehicle">
-          <div class="abu-dhabi-plate">
+          <div class="vehicle-plate is-abu-dhabi">
             <span class="plate-code">AD</span>
-            <span class="plate-number"></span>
+            <span class="dubai-code" aria-hidden="true">
+              <span class="dubai-name">DUBAI</span>
+              <span class="plate-letters"></span>
+            </span>
+            <span class="plate-number scrollable-cell"></span>
           </div>
         </div>
-        <div class="cell service-cell" role="cell" data-label="Service"></div>
+        <div class="cell service-cell scrollable-cell" role="cell" data-label="Service"></div>
         <div class="cell price-cell" role="cell" data-label="Price">
           <img class="dirham-symbol" src="/dirham.svg" alt="AED">
           <span class="price-value"></span>
         </div>
+        <div class="cell status-cell" role="cell" data-label="Status">
+          <span class="status-value"></span>
+        </div>
       </article>
     </template>
+
+    <section id="ready-alert" class="ready-alert" aria-hidden="true" aria-live="assertive">
+      <div class="ready-alert-card">
+        <p class="ready-alert-kicker">Vehicle</p>
+        <strong id="ready-alert-plate" class="ready-alert-plate"></strong>
+        <p class="ready-alert-message">is ready for pickup</p>
+      </div>
+    </section>
 
     <script src="/firebase-config.js"></script>
     <script type="module" src="/app.js"></script>
