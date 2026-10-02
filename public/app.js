@@ -7,31 +7,41 @@ const clockDate = document.getElementById("clock-date");
 const clockHours = document.getElementById("clock-hours");
 const clockMinutes = document.getElementById("clock-minutes");
 const promoPlayer = document.getElementById("promo-player");
-const promoVideos = Array.from(document.querySelectorAll(".promo-video"));
+const promoVideo = document.getElementById("promo-video");
 const readyAlert = document.getElementById("ready-alert");
 const readyAlertPlate = document.getElementById("ready-alert-plate");
 
 const PROMO_INITIAL_DELAY_MS = 20_000;
 const PROMO_INTERVAL_MS = 90_000;
 const PROMO_RESUME_DELAY_MS = 20_000;
-const PROMO_CROSSFADE_MS = 900;
+const PROMO_FADE_MS = 900;
 const PROMO_STALL_TIMEOUT_MS = 7_000;
+const PROMO_RETRY_DELAY_MS = 350;
 const READY_ALERT_DURATION_MS = 6_500;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
-const PROMO_SEQUENCES = [
-  { videoIndexes: [0, 1, 2], finalFrameHoldMs: 0 },
-  { videoIndexes: [3], finalFrameHoldMs: 3_500 },
+const DEFAULT_PROMO_GROUPS = [
+  {
+    videos: ["/media/promo-1.mp4", "/media/promo-2.mp4", "/media/promo-3.mp4"],
+    finalFrameHoldMs: 0,
+  },
+  { videos: ["/media/oil.mp4"], finalFrameHoldMs: 3_500 },
 ];
 
 const promoState = {
-  activeIndex: -1,
-  sequenceIndex: 0,
-  sequencePosition: -1,
+  groups: DEFAULT_PROMO_GROUPS,
+  groupIndex: 0,
+  videoIndex: 0,
   intervalTimer: null,
   holdTimer: null,
   cleanupTimer: null,
   stallTimer: null,
+  retryTimer: null,
+  retryCount: 0,
+  playToken: 0,
+  resumePending: false,
+  resumeTime: 0,
+  handlingFailure: false,
   running: false,
 };
 
@@ -107,34 +117,65 @@ function schedulePromo(delay = PROMO_INTERVAL_MS) {
 }
 
 function postponePromoForLiveUpdate() {
-  window.clearTimeout(promoState.intervalTimer);
+  if (!promoState.running) return;
 
-  if (promoState.running) {
-    window.clearTimeout(promoState.holdTimer);
-    window.clearTimeout(promoState.cleanupTimer);
-    promoPlayer.classList.remove("is-visible");
-    resetPromoVideos();
-    promoState.running = false;
-    promoState.sequenceIndex =
-      (promoState.sequenceIndex + 1) % PROMO_SEQUENCES.length;
-  }
-
+  window.clearTimeout(promoState.holdTimer);
+  window.clearTimeout(promoState.cleanupTimer);
+  window.clearTimeout(promoState.retryTimer);
+  clearPromoStallTimer();
+  promoState.playToken += 1;
+  promoState.resumeTime = Number.isFinite(promoVideo.currentTime)
+    ? promoVideo.currentTime
+    : 0;
+  promoState.resumePending = true;
+  promoState.handlingFailure = false;
+  promoState.running = false;
+  promoVideo.pause();
+  promoVideo.classList.remove("is-active");
+  promoPlayer.classList.remove("is-visible");
   schedulePromo(PROMO_RESUME_DELAY_MS);
 }
 
-function currentPromoSequence() {
-  return PROMO_SEQUENCES[promoState.sequenceIndex];
+function normalizePromoGroups(value) {
+  if (!Array.isArray(value?.groups)) return [];
+
+  return value.groups
+    .map((group) => {
+      const videos = Array.isArray(group?.videos)
+        ? group.videos
+          .map((source) => String(source || "").trim())
+          .filter(Boolean)
+        : [];
+      const requestedHold = Number(group?.finalFrameHoldMs || 0);
+      return {
+        videos,
+        finalFrameHoldMs: Number.isFinite(requestedHold)
+          ? Math.max(0, Math.min(requestedHold, 10_000))
+          : 0,
+      };
+    })
+    .filter((group) => group.videos.length > 0);
 }
 
-function resetPromoVideos() {
-  window.clearTimeout(promoState.stallTimer);
-  promoVideos.forEach((video) => {
-    video.pause();
-    video.classList.remove("is-active");
-    video.currentTime = 0;
-  });
-  promoState.activeIndex = -1;
-  promoState.sequencePosition = -1;
+async function loadPromoGroups() {
+  try {
+    const response = await fetch("/promos.json", { cache: "no-cache" });
+    if (!response.ok) throw new Error(`Promo playlist returned HTTP ${response.status}`);
+    const groups = normalizePromoGroups(await response.json());
+    if (!groups.length) throw new Error("Promo playlist has no playable groups.");
+    return groups;
+  } catch (error) {
+    console.warn("Using the built-in promo playlist.", error);
+    return DEFAULT_PROMO_GROUPS;
+  }
+}
+
+function currentPromoGroup() {
+  return promoState.groups[promoState.groupIndex] || promoState.groups[0];
+}
+
+function currentPromoSource() {
+  return currentPromoGroup()?.videos[promoState.videoIndex] || "";
 }
 
 function clearPromoStallTimer() {
@@ -142,13 +183,13 @@ function clearPromoStallTimer() {
   promoState.stallTimer = null;
 }
 
-function armPromoStallTimer(index) {
-  if (!promoState.running || index !== promoState.activeIndex) return;
+function armPromoStallTimer() {
+  if (!promoState.running) return;
   clearPromoStallTimer();
   promoState.stallTimer = window.setTimeout(() => {
     promoState.stallTimer = null;
-    if (!promoState.running || index !== promoState.activeIndex) return;
-    advancePromo(index);
+    if (!promoState.running) return;
+    handlePromoFailure();
   }, PROMO_STALL_TIMEOUT_MS);
 }
 
@@ -210,71 +251,93 @@ function startPromo() {
   }
 
   promoState.running = true;
-  resetPromoVideos();
-  const firstIndex = currentPromoSequence().videoIndexes[0];
-  const firstVideo = promoVideos[firstIndex];
-  promoState.sequencePosition = 0;
-  promoState.activeIndex = firstIndex;
-  playVideoWhenReady(firstVideo)
-    .then(() => {
-      if (!promoState.running || promoState.activeIndex !== firstIndex) return;
-      firstVideo.classList.add("is-active");
-      window.requestAnimationFrame(() => promoPlayer.classList.add("is-visible"));
-    })
-    .catch(() => advancePromo(firstIndex));
+  playCurrentPromo();
 }
 
-function crossfadePromo(fromIndex, toIndex) {
-  const currentVideo = promoVideos[fromIndex];
-  const nextVideo = promoVideos[toIndex];
-  if (!nextVideo) {
+function playCurrentPromo() {
+  if (!promoState.running) return;
+  const source = currentPromoSource();
+  if (!source) {
     finishPromo();
     return;
   }
 
-  window.clearTimeout(promoState.cleanupTimer);
-  promoState.activeIndex = toIndex;
-  nextVideo.currentTime = 0;
-  playVideoWhenReady(nextVideo)
+  const token = ++promoState.playToken;
+  const sourceChanged = promoVideo.getAttribute("src") !== source;
+  promoState.handlingFailure = false;
+  clearPromoStallTimer();
+  promoVideo.classList.remove("is-active");
+
+  if (sourceChanged) {
+    promoVideo.src = source;
+    promoVideo.load();
+  } else if (promoState.resumePending && Number.isFinite(promoVideo.duration)) {
+    const finalPlayableTime = Math.max(0, promoVideo.duration - 0.25);
+    promoVideo.currentTime = Math.min(promoState.resumeTime, finalPlayableTime);
+  }
+
+  playVideoWhenReady(promoVideo)
     .then(() => {
-      if (!promoState.running || promoState.activeIndex !== toIndex) return;
-      nextVideo.classList.add("is-active");
-      promoPlayer.classList.add("is-visible");
-
-      window.requestAnimationFrame(() => {
-        currentVideo?.classList.remove("is-active");
-      });
-
-      promoState.cleanupTimer = window.setTimeout(() => {
-        currentVideo?.pause();
-        if (currentVideo) currentVideo.currentTime = 0;
-      }, PROMO_CROSSFADE_MS + 80);
+      if (!promoState.running || promoState.playToken !== token) return;
+      promoState.resumePending = false;
+      promoState.resumeTime = 0;
+      promoState.handlingFailure = false;
+      promoVideo.classList.add("is-active");
+      window.requestAnimationFrame(() => promoPlayer.classList.add("is-visible"));
     })
-    .catch(() => advancePromo(toIndex));
+    .catch(handlePromoFailure);
 }
 
-function handlePromoEnded(index) {
-  if (!promoState.running || index !== promoState.activeIndex) return;
+function handlePromoFailure() {
+  if (!promoState.running || promoState.handlingFailure) return;
+  promoState.handlingFailure = true;
   clearPromoStallTimer();
+  promoState.playToken += 1;
 
-  const sequence = currentPromoSequence();
-  const isLastVideo = promoState.sequencePosition === sequence.videoIndexes.length - 1;
-  if (isLastVideo && sequence.finalFrameHoldMs > 0) {
-    promoState.holdTimer = window.setTimeout(finishPromo, sequence.finalFrameHoldMs);
+  if (promoState.retryCount < 1) {
+    promoState.retryCount += 1;
+    promoState.resumePending = false;
+    promoState.resumeTime = 0;
+    promoVideo.pause();
+    promoVideo.currentTime = 0;
+    promoVideo.load();
+    promoState.retryTimer = window.setTimeout(() => {
+      promoState.handlingFailure = false;
+      playCurrentPromo();
+    }, PROMO_RETRY_DELAY_MS);
     return;
   }
 
-  advancePromo(index);
+  promoState.handlingFailure = false;
+  advancePromo();
 }
 
-function advancePromo(index) {
-  if (!promoState.running || index !== promoState.activeIndex) return;
+function handlePromoEnded() {
+  if (!promoState.running) return;
   clearPromoStallTimer();
-  const sequence = currentPromoSequence();
-  const nextPosition = promoState.sequencePosition + 1;
-  if (nextPosition < sequence.videoIndexes.length) {
-    promoState.sequencePosition = nextPosition;
-    crossfadePromo(index, sequence.videoIndexes[nextPosition]);
+
+  const group = currentPromoGroup();
+  const isLastVideo = promoState.videoIndex === group.videos.length - 1;
+  if (isLastVideo && group.finalFrameHoldMs > 0) {
+    promoState.holdTimer = window.setTimeout(finishPromo, group.finalFrameHoldMs);
+    return;
+  }
+
+  advancePromo();
+}
+
+function advancePromo() {
+  if (!promoState.running) return;
+  clearPromoStallTimer();
+  window.clearTimeout(promoState.retryTimer);
+  const group = currentPromoGroup();
+  const nextIndex = promoState.videoIndex + 1;
+  if (nextIndex < group.videos.length) {
+    promoState.videoIndex = nextIndex;
+    promoState.retryCount = 0;
+    promoState.resumePending = false;
+    promoState.resumeTime = 0;
+    playCurrentPromo();
   } else {
     finishPromo();
   }
@@ -283,35 +346,42 @@ function advancePromo(index) {
 function finishPromo() {
   window.clearTimeout(promoState.holdTimer);
   window.clearTimeout(promoState.cleanupTimer);
+  window.clearTimeout(promoState.retryTimer);
   clearPromoStallTimer();
+  promoState.playToken += 1;
+  promoState.running = false;
+  promoState.handlingFailure = false;
+  promoState.resumePending = false;
+  promoState.resumeTime = 0;
+  promoState.retryCount = 0;
+  promoState.videoIndex = 0;
+  promoState.groupIndex = (promoState.groupIndex + 1) % promoState.groups.length;
   promoPlayer.classList.remove("is-visible");
 
   promoState.cleanupTimer = window.setTimeout(() => {
-    resetPromoVideos();
-    promoState.running = false;
-    promoState.sequenceIndex = (promoState.sequenceIndex + 1) % PROMO_SEQUENCES.length;
+    promoVideo.pause();
+    promoVideo.classList.remove("is-active");
+    promoVideo.currentTime = 0;
     schedulePromo();
-  }, PROMO_CROSSFADE_MS);
+  }, PROMO_FADE_MS);
 }
 
-function initPromoPlayer() {
-  promoVideos.forEach((video, index) => {
-    video.defaultMuted = true;
-    video.addEventListener("ended", () => handlePromoEnded(index));
-    video.addEventListener("error", () => advancePromo(index));
-    video.addEventListener("playing", clearPromoStallTimer);
-    video.addEventListener("canplay", clearPromoStallTimer);
-    video.addEventListener("waiting", () => armPromoStallTimer(index));
-    video.addEventListener("stalled", () => armPromoStallTimer(index));
-    video.load();
-  });
+async function initPromoPlayer() {
+  promoVideo.defaultMuted = true;
+  promoVideo.addEventListener("ended", handlePromoEnded);
+  promoVideo.addEventListener("error", handlePromoFailure);
+  promoVideo.addEventListener("playing", clearPromoStallTimer);
+  promoVideo.addEventListener("canplay", clearPromoStallTimer);
+  promoVideo.addEventListener("waiting", armPromoStallTimer);
+  promoVideo.addEventListener("stalled", armPromoStallTimer);
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && promoState.running) {
-      promoVideos[promoState.activeIndex]?.play().catch(() => {});
+      promoVideo.play().catch(handlePromoFailure);
     }
   });
 
+  promoState.groups = await loadPromoGroups();
   schedulePromo(PROMO_INITIAL_DELAY_MS);
 }
 
