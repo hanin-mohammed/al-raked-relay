@@ -1,0 +1,11 @@
+{
+  "name": "al-raked-live-display",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local proof-of-concept display for the latest Al Raked entries",
+  "scripts": {
+    "build": "node build.js",
+    "start": "node server.js",
+    "check": "node --check server.js && node --check public/app.js"
+  }
+}
