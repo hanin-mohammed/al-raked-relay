@@ -2,9 +2,7 @@
   "groups": [
     {
       "videos": [
-        "/media/promo-1.mp4",
-        "/media/promo-2.mp4",
-        "/media/promo-3.mp4"
+        "/media/raked-relay.mp4"
       ],
       "finalFrameHoldMs": 0
     },

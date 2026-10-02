@@ -20,6 +20,7 @@ const contentTypes = {
   ".json": "application/json; charset=utf-8",
   ".mp4": "video/mp4",
   ".mp3": "audio/mpeg",
+  ".otf": "font/otf",
   ".svg": "image/svg+xml",
 };
 

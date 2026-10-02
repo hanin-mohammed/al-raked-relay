@@ -25,8 +25,9 @@ const READY_ALERT_DURATION_MS = 6_500;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
 const SOUND_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
-// Set this to false to remove the chime and its TV activation prompt.
+// Keep the chime active while temporarily hiding its TV activation prompt.
 const READY_CHIME_ENABLED = true;
+const READY_CHIME_PROMPT_ENABLED = false;
 const DEFAULT_PROMO_GROUPS = [
   {
     videos: ["/media/raked-relay.mp4"],
@@ -133,7 +134,7 @@ let soundPromptTimer = null;
 let soundPromptExpired = false;
 
 function setSoundPromptVisible(visible) {
-  const shouldShow = visible && !soundPromptExpired;
+  const shouldShow = READY_CHIME_PROMPT_ENABLED && visible && !soundPromptExpired;
   soundPrompt.classList.toggle("is-hidden", !shouldShow);
   soundPrompt.setAttribute("aria-hidden", String(!shouldShow));
 }
@@ -195,7 +196,7 @@ function playReadyChime() {
   });
 }
 
-if (READY_CHIME_ENABLED) {
+if (READY_CHIME_ENABLED && READY_CHIME_PROMPT_ENABLED) {
   setSoundPromptVisible(true);
   soundEnable.addEventListener("click", enableReadyChime);
   window.setTimeout(() => soundEnable.focus(), 250);
