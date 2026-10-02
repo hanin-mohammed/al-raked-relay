@@ -29,7 +29,7 @@ const SOUND_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
 const READY_CHIME_ENABLED = true;
 const DEFAULT_PROMO_GROUPS = [
   {
-    videos: ["/media/promo-1.mp4", "/media/promo-2.mp4", "/media/promo-3.mp4"],
+    videos: ["/media/raked-relay.mp4"],
     finalFrameHoldMs: 0,
   },
   { videos: ["/media/oil.mp4"], finalFrameHoldMs: 3_500 },
