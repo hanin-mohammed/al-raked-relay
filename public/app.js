@@ -26,7 +26,6 @@ const DISPLAY_ENTRY_LIMIT = 13;
 const TRACKED_ENTRY_LIMIT = 30;
 const READY_ALERT_DURATION_MS = 5_000;
 const READY_ALERT_FADE_MS = 450;
-const READY_CHIME_STARTUP_MUTE_MS = 8_000;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
 const SOUND_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
@@ -70,7 +69,6 @@ let entries = [];
 let trackedEntries = [];
 let hasLoadedSnapshot = false;
 let hasPlayedStartupSound = false;
-let readyChimeMutedUntil = 0;
 let overflowRefreshFrame = 0;
 
 function displayTime(value) {
@@ -143,8 +141,10 @@ function updateClock() {
 let readyAudioContext = null;
 let readyChimeBuffer = null;
 let readyChimeUnlockPromise = null;
+let activeReadyChimeSource = null;
 let soundPromptTimer = null;
 let soundPromptExpired = false;
+let startupSoundActive = false;
 
 function setSoundPromptVisible(visible) {
   const shouldShow = READY_CHIME_PROMPT_ENABLED && visible && !soundPromptExpired;
@@ -184,14 +184,19 @@ async function enableReadyChime() {
 }
 
 function playReadyChime() {
-  if (!READY_CHIME_ENABLED || Date.now() < readyChimeMutedUntil) return;
+  if (!READY_CHIME_ENABLED || startupSoundActive) return;
 
   if (readyAudioContext && readyChimeBuffer) {
     readyAudioContext.resume()
       .then(() => {
+        if (startupSoundActive) return;
         const source = readyAudioContext.createBufferSource();
         source.buffer = readyChimeBuffer;
         source.connect(readyAudioContext.destination);
+        activeReadyChimeSource = source;
+        source.addEventListener("ended", () => {
+          if (activeReadyChimeSource === source) activeReadyChimeSource = null;
+        });
         source.start(0);
       })
       .catch((error) => {
@@ -209,13 +214,42 @@ function playReadyChime() {
   });
 }
 
+function stopReadyChimePlayback() {
+  if (activeReadyChimeSource) {
+    try {
+      activeReadyChimeSource.stop(0);
+    } catch {
+      // The source may already have stopped.
+    }
+    activeReadyChimeSource.disconnect();
+    activeReadyChimeSource = null;
+  }
+
+  readyChime.pause();
+  readyChime.currentTime = 0;
+}
+
+function releaseStartupSoundLock() {
+  startupSoundActive = false;
+}
+
+startupSound.addEventListener("playing", () => {
+  startupSoundActive = true;
+  stopReadyChimePlayback();
+});
+startupSound.addEventListener("ended", releaseStartupSoundLock);
+startupSound.addEventListener("error", releaseStartupSoundLock);
+startupSound.addEventListener("abort", releaseStartupSoundLock);
+
 function playStartupSoundOnce() {
   if (hasPlayedStartupSound) return;
   hasPlayedStartupSound = true;
-  readyChimeMutedUntil = Date.now() + READY_CHIME_STARTUP_MUTE_MS;
+  startupSoundActive = true;
+  stopReadyChimePlayback();
   startupSound.volume = 0.5;
   startupSound.currentTime = 0;
   startupSound.play().catch((error) => {
+    releaseStartupSoundLock();
     console.warn("Startup sound could not play.", error);
   });
 }

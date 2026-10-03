@@ -55,7 +55,7 @@
     <audio id="ready-chime" src="/media/ready-chime.mp3" preload="auto"></audio>
     <audio id="startup-sound" src="/media/startup.mp3" preload="auto"></audio>
 
-    <aside id="sound-prompt" class="sound-prompt" aria-label="Enable completion sounds">
+    <aside id="sound-prompt" class="sound-prompt is-hidden" aria-label="Enable completion sounds" aria-hidden="true">
       <button id="sound-enable" class="sound-enable" type="button">
         <span class="sound-enable-icon" aria-hidden="true">♪</span>
         <span>
@@ -103,6 +103,6 @@
     </section>
 
     <script src="/firebase-config.js"></script>
-    <script type="module" src="/app.js"></script>
+    <script type="module" src="/app.js?v=20261003-audio-lock"></script>
   </body>
 </html>
