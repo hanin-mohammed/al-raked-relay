@@ -1,6 +1,7 @@
 :root {
   color-scheme: light;
-  font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  font-family: "Rubik", ui-sans-serif, system-ui, sans-serif;
+  font-weight: 700;
   background: #fff;
   color: #17191e;
   --red: #2f6fd6;
@@ -18,6 +19,14 @@
   font-display: swap;
   font-style: normal;
   font-weight: 100 900;
+}
+
+@font-face {
+  font-family: "GL Nummernschild";
+  src: url("/fonts/GL-Nummernschild-Mtl.otf") format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 500;
 }
 
 * {
@@ -177,6 +186,21 @@ body::after {
   line-height: 1.05;
 }
 
+.ready-alert-return,
+.ready-alert-thanks {
+  margin: clamp(0.85rem, 2vh, 1.4rem) 0 0;
+  font-size: clamp(1.15rem, 2.4vw, 2.5rem);
+  font-weight: 500;
+  line-height: 1.25;
+  opacity: 0.72;
+}
+
+.ready-alert-thanks {
+  margin-top: clamp(0.65rem, 1.4vh, 1rem);
+  font-family: "Alexandria", "Rubik", sans-serif;
+  font-weight: 500;
+}
+
 .promo-video {
   position: absolute;
   inset: 0;
@@ -256,9 +280,7 @@ h1 {
   display: inline-flex;
   align-items: baseline;
   gap: 0.48em;
-  margin-right: 0.65em;
-  padding-right: 0.65em;
-  border-right: 1.5px solid var(--line);
+  margin-right: 0.55em;
 }
 
 .clock-date,
@@ -271,7 +293,7 @@ h1 {
 }
 
 .clock-hijri-date {
-  font-family: "Alexandria", "Manrope", sans-serif;
+  font-family: "Alexandria", "Rubik", sans-serif;
   font-size: calc(0.765em + 8.5px);
   font-weight: 600;
   letter-spacing: 0;
@@ -280,6 +302,10 @@ h1 {
 .clock-time {
   display: inline-flex;
   align-items: baseline;
+  padding: 0.12em 0.42em;
+  border: 2px solid #d71920;
+  border-radius: 0.42em;
+  line-height: 1;
 }
 
 .clock-colon {
@@ -399,7 +425,7 @@ h1 {
 
 .status-value {
   display: block;
-  font-family: "Exo", "Manrope", sans-serif;
+  font-family: "Rubik", sans-serif;
   font-size: clamp(1.35rem, 1.9vw, 2.2rem);
   font-weight: 900;
   letter-spacing: 0.045em;
@@ -661,6 +687,14 @@ h1 {
   font-size: clamp(2rem, 2.8vw, 3.25rem);
   font-weight: 700;
   letter-spacing: 0.045em;
+  position: relative;
+  top: -0.07em;
+}
+
+.vehicle-plate.is-abu-dhabi .plate-code,
+.vehicle-plate.is-abu-dhabi .plate-number {
+  font-family: "GL Nummernschild", "Arial Narrow", sans-serif;
+  font-weight: 500;
 }
 
 .plate-number {
