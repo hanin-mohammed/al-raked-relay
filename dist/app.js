@@ -27,13 +27,18 @@ const READY_ALERT_DURATION_MS = 5_000;
 const READY_ALERT_FADE_MS = 450;
 const STARTUP_SOUND_MAX_MS = 12_000;
 const READY_CHIME_SRC = "/media/ready-chime.mp3?v=20261003-ready-gate";
+const READY_SEQUENCE_SRCS = [
+  "/media/ready-sequence-1.mp3?v=20261003-ready-voice",
+  "/media/ready-sequence-2.mp3?v=20261003-ready-voice",
+];
+const READY_SEQUENCE_MAX_MS = 20_000;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
 const SOUND_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
 // Keep the chime active while temporarily hiding its TV activation prompt.
 const READY_CHIME_ENABLED = true;
 const READY_CHIME_PROMPT_ENABLED = false;
-const READY_FULLSCREEN_ALERT_ENABLED = false;
+const READY_FULLSCREEN_ALERT_ENABLED = true;
 const DEFAULT_PROMO_GROUPS = [
   {
     videos: ["/media/raked-relay.mp4"],
@@ -145,6 +150,10 @@ let readyChimeBuffer = null;
 let readyChimeUnlockPromise = null;
 let readyChime = null;
 let activeReadyChimeSource = null;
+let readySequencePlayers = null;
+let readySequenceIndex = 0;
+let activeReadySequence = null;
+let activeReadySequenceFinish = null;
 let soundPromptTimer = null;
 let soundPromptExpired = false;
 let startupSoundActive = true;
@@ -158,6 +167,67 @@ function ensureReadyChimePlayer() {
   readyChime.volume = 1;
   readyChime.load();
   return readyChime;
+}
+
+function ensureReadySequencePlayers() {
+  if (readySequencePlayers) return readySequencePlayers;
+  readySequencePlayers = READY_SEQUENCE_SRCS.map((source) => {
+    const player = new Audio(source);
+    player.preload = "auto";
+    player.volume = 1;
+    player.load();
+    return player;
+  });
+  return readySequencePlayers;
+}
+
+function playReadySequence() {
+  if (!READY_CHIME_ENABLED || !readyChimeArmed || startupSoundActive) {
+    return Promise.resolve(false);
+  }
+
+  const players = ensureReadySequencePlayers();
+  const player = players[readySequenceIndex % players.length];
+  readySequenceIndex = (readySequenceIndex + 1) % players.length;
+
+  if (activeReadySequenceFinish) activeReadySequenceFinish(false);
+  activeReadySequence = player;
+  player.currentTime = 0;
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const timeout = window.setTimeout(() => finish(false), READY_SEQUENCE_MAX_MS);
+
+    function finish(playedToEnd) {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeout);
+      player.removeEventListener("ended", handleEnded);
+      player.removeEventListener("error", handleError);
+      if (activeReadySequence === player) activeReadySequence = null;
+      if (activeReadySequenceFinish === finish) activeReadySequenceFinish = null;
+      resolve(playedToEnd);
+    }
+
+    function handleEnded() {
+      finish(true);
+    }
+
+    function handleError() {
+      console.warn("Ready chime and voice sequence could not play.");
+      setSoundPromptVisible(true);
+      finish(false);
+    }
+
+    activeReadySequenceFinish = finish;
+    player.addEventListener("ended", handleEnded, { once: true });
+    player.addEventListener("error", handleError, { once: true });
+    player.play().catch((error) => {
+      console.warn("Ready chime and voice sequence needs TV permission.", error);
+      setSoundPromptVisible(true);
+      finish(false);
+    });
+  });
 }
 
 function setSoundPromptVisible(visible) {
@@ -245,6 +315,12 @@ function stopReadyChimePlayback() {
     readyChime.pause();
     readyChime.currentTime = 0;
   }
+
+  if (activeReadySequence) {
+    activeReadySequence.pause();
+    activeReadySequence.currentTime = 0;
+  }
+  if (activeReadySequenceFinish) activeReadySequenceFinish(false);
 }
 
 function releaseStartupSoundLock() {
@@ -252,6 +328,7 @@ function releaseStartupSoundLock() {
   startupSoundWatchdog = null;
   startupSoundActive = false;
   ensureReadyChimePlayer();
+  ensureReadySequencePlayers();
   readyChimeArmed = true;
   showNextReadyAlert();
 }
@@ -637,7 +714,7 @@ function queueReadyAlert(entry, suppressChime = false) {
   showNextReadyAlert();
 }
 
-function showNextReadyAlert() {
+async function showNextReadyAlert() {
   if (
     !readyChimeArmed ||
     startupSoundActive ||
@@ -654,7 +731,12 @@ function showNextReadyAlert() {
   readyAlertPlate.textContent = String(entry.licensePlate || "Vehicle").trim();
   readyAlert.setAttribute("aria-hidden", "false");
   requestAnimationFrame(() => readyAlert.classList.add("is-visible"));
-  if (!entry.suppressChime) playReadyChime();
+  const visibleSince = Date.now();
+  if (!entry.suppressChime) await playReadySequence();
+  const remainingMinimum = Math.max(
+    0,
+    READY_ALERT_DURATION_MS - (Date.now() - visibleSince),
+  );
 
   readyAlertState.timer = window.setTimeout(() => {
     readyAlert.classList.remove("is-visible");
@@ -663,7 +745,7 @@ function showNextReadyAlert() {
       readyAlertState.active = false;
       showNextReadyAlert();
     }, READY_ALERT_FADE_MS);
-  }, READY_ALERT_DURATION_MS - READY_ALERT_FADE_MS);
+  }, remainingMinimum);
 }
 
 function fillCell(node, selector, value) {
