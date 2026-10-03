@@ -33,6 +33,7 @@ const SOUND_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
 // Keep the chime active while temporarily hiding its TV activation prompt.
 const READY_CHIME_ENABLED = true;
 const READY_CHIME_PROMPT_ENABLED = false;
+const READY_FULLSCREEN_ALERT_ENABLED = false;
 const DEFAULT_PROMO_GROUPS = [
   {
     videos: ["/media/raked-relay.mp4"],
@@ -626,6 +627,12 @@ function queueReadyAlert(entry, suppressChime = false) {
   if (alreadyQueued) return;
 
   markReadyEventSeen(alertKey);
+  if (!READY_FULLSCREEN_ALERT_ENABLED) {
+    postponePromoForLiveUpdate();
+    if (!suppressChime) playReadyChime();
+    return;
+  }
+
   readyAlertState.queue.push({ ...entry, alertKey, suppressChime });
   showNextReadyAlert();
 }
@@ -746,10 +753,11 @@ function scheduleOverflowRefresh() {
   });
 }
 
-function makeEntryNode(entry, isNew) {
+function makeEntryNode(entry, isNew, pulseReady = false) {
   const node = entryTemplate.content.firstElementChild.cloneNode(true);
   node.dataset.id = entry.id;
   if (isNew) node.classList.add("is-new");
+  if (pulseReady) node.classList.add("is-ready-pulse");
 
   fillCell(node, ".entry-time", displayTime(entry.timestamp));
   fillScrollingCell(node, ".employee-cell", entry.employee);
@@ -796,7 +804,7 @@ function makePlaceholderNode(index) {
   return node;
 }
 
-function render(nextEntries, newEntryId = "") {
+function render(nextEntries, newEntryId = "", readyPulseIds = new Set()) {
   const previousPositions = new Map(
     Array.from(entriesElement.children).map((node) => [node.dataset.id, node.getBoundingClientRect()]),
   );
@@ -804,7 +812,11 @@ function render(nextEntries, newEntryId = "") {
   trackedEntries = nextEntries.slice(0, TRACKED_ENTRY_LIMIT);
   entries = trackedEntries.slice(0, DISPLAY_ENTRY_LIMIT);
   const fragment = document.createDocumentFragment();
-  entries.forEach((entry) => fragment.append(makeEntryNode(entry, entry.id === newEntryId)));
+  entries.forEach((entry) => {
+    fragment.append(
+      makeEntryNode(entry, entry.id === newEntryId, readyPulseIds.has(entry.id)),
+    );
+  });
   for (let index = entries.length; index < DISPLAY_ENTRY_LIMIT; index += 1) {
     fragment.append(makePlaceholderNode(index));
   }
@@ -1027,6 +1039,19 @@ function applyFirebaseStreamChange(eventType, payload) {
   const previousById = new Map(
     previousEntries.map((entry) => [entry.id, entry]),
   );
+  const newlyReadyIds = new Set(
+    nextEntries
+      .filter((entry) => {
+        const previousEntry = previousById.get(entry.id);
+        return (
+          hasLoadedSnapshot &&
+          previousEntry &&
+          !entryIsReady(previousEntry) &&
+          entryIsReady(entry)
+        );
+      })
+      .map((entry) => entry.id),
+  );
   const hasLiveChange =
     nextNewestId !== previousNewestId ||
     nextEntries.some((entry) => {
@@ -1041,6 +1066,7 @@ function applyFirebaseStreamChange(eventType, payload) {
   render(
     nextEntries,
     hasLoadedSnapshot && nextNewestId !== previousNewestId ? nextNewestId : "",
+    newlyReadyIds,
   );
   if (hasLoadedSnapshot) {
     nextEntries.forEach((entry) => {
@@ -1190,14 +1216,19 @@ function connectLocal() {
   stream.addEventListener("status", (event) => {
     const payload = JSON.parse(event.data);
     const previousEntry = trackedEntries.find((entry) => entry.id === payload.entry?.id);
-    if (hasLoadedSnapshot) postponePromoForLiveUpdate();
-    render(payload.entries || []);
-    if (
+    const becameReady = Boolean(
       hasLoadedSnapshot &&
       previousEntry &&
       !entryIsReady(previousEntry) &&
-      entryIsReady(payload.entry)
-    ) {
+      entryIsReady(payload.entry),
+    );
+    if (hasLoadedSnapshot) postponePromoForLiveUpdate();
+    render(
+      payload.entries || [],
+      "",
+      becameReady ? new Set([payload.entry.id]) : new Set(),
+    );
+    if (becameReady) {
       queueReadyAlert(payload.entry);
     }
     hasLoadedSnapshot = true;
