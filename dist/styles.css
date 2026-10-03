@@ -613,6 +613,10 @@ h1 {
   text-shadow: none;
 }
 
+.vehicle-plate.is-commercial .plate-code {
+  background: linear-gradient(150deg, #087548, #004b31);
+}
+
 .dubai-code {
   display: none;
 }

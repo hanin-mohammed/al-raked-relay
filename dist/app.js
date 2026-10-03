@@ -102,6 +102,11 @@ function plateParts(value) {
   return { style: "abu-dhabi", code: "AD", number: plate || "-" };
 }
 
+function isCompanyService(value) {
+  const company = String(value || "").trim();
+  return company !== "" && company !== "-";
+}
+
 function updateClock() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-AE", {
@@ -669,15 +674,18 @@ function makeEntryNode(entry, isNew) {
   fillCell(node, ".status-value", ready ? "Ready" : "In Progress");
 
   const plate = plateParts(entry.licensePlate);
+  const companyService = isCompanyService(entry.company);
+  const displayedPlateStyle = companyService ? "abu-dhabi" : plate.style;
   const plateElement = node.querySelector(".vehicle-plate");
-  plateElement.classList.toggle("is-dubai", plate.style === "dubai");
-  plateElement.classList.toggle("is-abu-dhabi", plate.style !== "dubai");
+  plateElement.classList.toggle("is-dubai", displayedPlateStyle === "dubai");
+  plateElement.classList.toggle("is-abu-dhabi", displayedPlateStyle === "abu-dhabi");
+  plateElement.classList.toggle("is-commercial", companyService);
   fillCell(node, ".plate-code", plate.code);
   fillCell(node, ".plate-letters", plate.code);
   fillScrollingCell(node, ".plate-number", plate.number);
   plateElement.setAttribute(
     "aria-label",
-    `${plate.style === "dubai" ? "Dubai" : "Abu Dhabi"} plate ${plate.code} ${plate.number}`,
+    `${companyService ? "Abu Dhabi commercial" : displayedPlateStyle === "dubai" ? "Dubai" : "Abu Dhabi"} plate ${plate.code} ${plate.number}`,
   );
 
   node.querySelector(".price-cell").dataset.free = String(entry.price).toLowerCase() === "free";
