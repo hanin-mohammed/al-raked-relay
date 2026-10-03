@@ -9,7 +9,6 @@ const clockHours = document.getElementById("clock-hours");
 const clockMinutes = document.getElementById("clock-minutes");
 const promoPlayer = document.getElementById("promo-player");
 const promoVideo = document.getElementById("promo-video");
-const readyChime = document.getElementById("ready-chime");
 const startupSound = document.getElementById("startup-sound");
 const soundPrompt = document.getElementById("sound-prompt");
 const soundEnable = document.getElementById("sound-enable");
@@ -26,6 +25,8 @@ const DISPLAY_ENTRY_LIMIT = 13;
 const TRACKED_ENTRY_LIMIT = 30;
 const READY_ALERT_DURATION_MS = 5_000;
 const READY_ALERT_FADE_MS = 450;
+const STARTUP_SOUND_MAX_MS = 12_000;
+const READY_CHIME_SRC = "/media/ready-chime.mp3?v=20261003-ready-gate";
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
 const SOUND_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
@@ -141,11 +142,22 @@ function updateClock() {
 let readyAudioContext = null;
 let readyChimeBuffer = null;
 let readyChimeUnlockPromise = null;
+let readyChime = null;
 let activeReadyChimeSource = null;
 let soundPromptTimer = null;
 let soundPromptExpired = false;
 let startupSoundActive = true;
 let readyChimeArmed = false;
+let startupSoundWatchdog = null;
+
+function ensureReadyChimePlayer() {
+  if (readyChime) return readyChime;
+  readyChime = new Audio(READY_CHIME_SRC);
+  readyChime.preload = "auto";
+  readyChime.volume = 1;
+  readyChime.load();
+  return readyChime;
+}
 
 function setSoundPromptVisible(visible) {
   const shouldShow = READY_CHIME_PROMPT_ENABLED && visible && !soundPromptExpired;
@@ -154,6 +166,7 @@ function setSoundPromptVisible(visible) {
 }
 
 async function enableReadyChime() {
+  ensureReadyChimePlayer();
   if (!READY_CHIME_ENABLED || readyChimeBuffer) return;
   if (readyChimeUnlockPromise) return readyChimeUnlockPromise;
 
@@ -186,6 +199,7 @@ async function enableReadyChime() {
 
 function playReadyChime() {
   if (!READY_CHIME_ENABLED || !readyChimeArmed || startupSoundActive) return;
+  ensureReadyChimePlayer();
 
   if (readyAudioContext && readyChimeBuffer) {
     readyAudioContext.resume()
@@ -226,13 +240,19 @@ function stopReadyChimePlayback() {
     activeReadyChimeSource = null;
   }
 
-  readyChime.pause();
-  readyChime.currentTime = 0;
+  if (readyChime) {
+    readyChime.pause();
+    readyChime.currentTime = 0;
+  }
 }
 
 function releaseStartupSoundLock() {
+  window.clearTimeout(startupSoundWatchdog);
+  startupSoundWatchdog = null;
   startupSoundActive = false;
+  ensureReadyChimePlayer();
   readyChimeArmed = true;
+  showNextReadyAlert();
 }
 
 startupSound.addEventListener("playing", () => {
@@ -252,6 +272,10 @@ function playStartupSoundOnce() {
   stopReadyChimePlayback();
   startupSound.volume = 0.5;
   startupSound.currentTime = 0;
+  startupSoundWatchdog = window.setTimeout(() => {
+    startupSound.pause();
+    releaseStartupSoundLock();
+  }, STARTUP_SOUND_MAX_MS);
   startupSound.play().catch((error) => {
     releaseStartupSoundLock();
     console.warn("Startup sound could not play.", error);
@@ -607,7 +631,14 @@ function queueReadyAlert(entry, suppressChime = false) {
 }
 
 function showNextReadyAlert() {
-  if (readyAlertState.active || readyAlertState.queue.length === 0) return;
+  if (
+    !readyChimeArmed ||
+    startupSoundActive ||
+    readyAlertState.active ||
+    readyAlertState.queue.length === 0
+  ) {
+    return;
+  }
 
   const entry = readyAlertState.queue.shift();
   readyAlertState.active = true;
@@ -1024,7 +1055,6 @@ function applyFirebaseStreamChange(eventType, payload) {
     });
   } else {
     queueFreshUnseenReadyAlerts(nextEntries);
-    playStartupSoundOnce();
   }
   hasLoadedSnapshot = true;
   setConnection(true, "Live");
@@ -1149,7 +1179,6 @@ function connectLocal() {
     const nextEntries = payload.entries || [];
     render(nextEntries);
     queueFreshUnseenReadyAlerts(nextEntries);
-    playStartupSoundOnce();
     hasLoadedSnapshot = true;
   });
   stream.addEventListener("entry", (event) => {
@@ -1182,6 +1211,7 @@ const useFirebase =
   sourceOverride === "firebase" ||
   (sourceOverride !== "local" && !localHostnames.has(window.location.hostname));
 
+playStartupSoundOnce();
 render([]);
 
 if (useFirebase) {
