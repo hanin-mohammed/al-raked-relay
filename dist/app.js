@@ -144,7 +144,8 @@ let readyChimeUnlockPromise = null;
 let activeReadyChimeSource = null;
 let soundPromptTimer = null;
 let soundPromptExpired = false;
-let startupSoundActive = false;
+let startupSoundActive = true;
+let readyChimeArmed = false;
 
 function setSoundPromptVisible(visible) {
   const shouldShow = READY_CHIME_PROMPT_ENABLED && visible && !soundPromptExpired;
@@ -184,12 +185,12 @@ async function enableReadyChime() {
 }
 
 function playReadyChime() {
-  if (!READY_CHIME_ENABLED || startupSoundActive) return;
+  if (!READY_CHIME_ENABLED || !readyChimeArmed || startupSoundActive) return;
 
   if (readyAudioContext && readyChimeBuffer) {
     readyAudioContext.resume()
       .then(() => {
-        if (startupSoundActive) return;
+        if (!readyChimeArmed || startupSoundActive) return;
         const source = readyAudioContext.createBufferSource();
         source.buffer = readyChimeBuffer;
         source.connect(readyAudioContext.destination);
@@ -231,10 +232,12 @@ function stopReadyChimePlayback() {
 
 function releaseStartupSoundLock() {
   startupSoundActive = false;
+  readyChimeArmed = true;
 }
 
 startupSound.addEventListener("playing", () => {
   startupSoundActive = true;
+  readyChimeArmed = false;
   stopReadyChimePlayback();
 });
 startupSound.addEventListener("ended", releaseStartupSoundLock);
@@ -245,6 +248,7 @@ function playStartupSoundOnce() {
   if (hasPlayedStartupSound) return;
   hasPlayedStartupSound = true;
   startupSoundActive = true;
+  readyChimeArmed = false;
   stopReadyChimePlayback();
   startupSound.volume = 0.5;
   startupSound.currentTime = 0;
