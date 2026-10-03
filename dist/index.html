@@ -7,9 +7,10 @@
     <meta name="description" content="Live service display for Al Raked Car Washing Station">
     <title>Al Raked Live Display</title>
     <link rel="icon" type="image/png" href="/raked-icon.png">
+    <link rel="preload" href="/fonts/KOPilot-Regular.otf" as="font" type="font/otf" crossorigin>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Exo:wght@700;800;900&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
@@ -20,7 +21,10 @@
           <h1 id="display-title">AL RAKED CAR WASHING STATION</h1>
         </div>
         <div class="clock" aria-label="Current date and time">
-          <span id="clock-date" class="clock-date">02 OCT</span>
+          <span class="clock-calendar">
+            <span id="clock-date" class="clock-date">02 OCT</span>
+            <span id="clock-hijri-date" class="clock-hijri-date" lang="ar" dir="rtl">٢١ ربيع الآخر</span>
+          </span>
           <span class="clock-time">
             <span id="clock-hours">00</span><span class="clock-colon" aria-hidden="true">:</span><span id="clock-minutes">00</span>
           </span>
@@ -28,7 +32,7 @@
         <div class="connection sr-only" aria-live="polite"><span id="connection-text">Connecting</span></div>
       </header>
 
-      <section class="feed" aria-label="Latest ten service entries">
+      <section class="feed" aria-label="Latest thirteen service entries">
         <div class="feed-head" role="row" aria-hidden="true">
           <span>Time</span>
           <span>Employee</span>
@@ -45,11 +49,20 @@
     </main>
 
     <section id="promo-player" class="promo-player" aria-hidden="true">
-      <video class="promo-video" src="/media/promo-1.mp4" muted playsinline preload="auto" disablepictureinpicture></video>
-      <video class="promo-video" src="/media/promo-2.mp4" muted playsinline preload="auto" disablepictureinpicture></video>
-      <video class="promo-video" src="/media/promo-3.mp4" muted playsinline preload="auto" disablepictureinpicture></video>
-      <video class="promo-video" src="/media/oil.mp4" muted playsinline preload="auto" disablepictureinpicture></video>
+      <video id="promo-video" class="promo-video" muted playsinline preload="metadata" disablepictureinpicture></video>
     </section>
+
+    <audio id="ready-chime" src="/media/ready-chime.mp3" preload="auto"></audio>
+
+    <aside id="sound-prompt" class="sound-prompt" aria-label="Enable completion sounds">
+      <button id="sound-enable" class="sound-enable" type="button">
+        <span class="sound-enable-icon" aria-hidden="true">♪</span>
+        <span>
+          <strong>Press OK to enable sound</strong>
+          <small>Completion chimes will play on this TV</small>
+        </span>
+      </button>
+    </aside>
 
     <template id="entry-template">
       <article class="entry" role="row">

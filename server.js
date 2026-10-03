@@ -7,7 +7,7 @@ const HOST = process.env.AL_RAKED_DISPLAY_HOST || "0.0.0.0";
 const PORT = Number(process.env.AL_RAKED_DISPLAY_PORT || 4173);
 const FEED_KEY = process.env.AL_RAKED_FEED_KEY || "local-proof-of-concept";
 const PUBLIC_DIR = path.join(__dirname, "public");
-const MAX_ENTRIES = 10;
+const MAX_ENTRIES = 30;
 const MAX_BODY_BYTES = 32 * 1024;
 
 const entries = [];
@@ -17,7 +17,10 @@ const contentTypes = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
   ".mp4": "video/mp4",
+  ".mp3": "audio/mpeg",
+  ".otf": "font/otf",
   ".svg": "image/svg+xml",
 };
 

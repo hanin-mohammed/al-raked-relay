@@ -5,6 +5,11 @@
     "liveDisplay": {
       ".read": "auth != null",
       ".indexOn": ["timestamp"]
+    },
+    "displayControl": {
+      "$displayId": {
+        ".read": "auth != null"
+      }
     }
   }
 }

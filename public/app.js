@@ -4,30 +4,55 @@ const entryTemplate = document.getElementById("entry-template");
 const connection = document.querySelector(".connection");
 const connectionText = document.getElementById("connection-text");
 const clockDate = document.getElementById("clock-date");
+const clockHijriDate = document.getElementById("clock-hijri-date");
 const clockHours = document.getElementById("clock-hours");
 const clockMinutes = document.getElementById("clock-minutes");
 const promoPlayer = document.getElementById("promo-player");
-const promoVideos = Array.from(document.querySelectorAll(".promo-video"));
+const promoVideo = document.getElementById("promo-video");
+const readyChime = document.getElementById("ready-chime");
+const soundPrompt = document.getElementById("sound-prompt");
+const soundEnable = document.getElementById("sound-enable");
 const readyAlert = document.getElementById("ready-alert");
 const readyAlertPlate = document.getElementById("ready-alert-plate");
 
+const PROMO_INITIAL_DELAY_MS = 20_000;
 const PROMO_INTERVAL_MS = 90_000;
-const PROMO_CROSSFADE_MS = 900;
-const READY_ALERT_DURATION_MS = 6_500;
+const PROMO_RESUME_DELAY_MS = 20_000;
+const PROMO_FADE_MS = 900;
+const PROMO_STALL_TIMEOUT_MS = 7_000;
+const PROMO_RETRY_DELAY_MS = 350;
+const DISPLAY_ENTRY_LIMIT = 13;
+const TRACKED_ENTRY_LIMIT = 30;
+const READY_ALERT_DURATION_MS = 5_000;
+const READY_ALERT_FADE_MS = 450;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
-const PROMO_SEQUENCES = [
-  { videoIndexes: [0, 1, 2], finalFrameHoldMs: 0 },
-  { videoIndexes: [3], finalFrameHoldMs: 3_500 },
+const SOUND_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
+// Keep the chime active while temporarily hiding its TV activation prompt.
+const READY_CHIME_ENABLED = true;
+const READY_CHIME_PROMPT_ENABLED = false;
+const DEFAULT_PROMO_GROUPS = [
+  {
+    videos: ["/media/raked-relay.mp4"],
+    finalFrameHoldMs: 0,
+  },
+  { videos: ["/media/oil.mp4"], finalFrameHoldMs: 3_500 },
 ];
 
 const promoState = {
-  activeIndex: -1,
-  sequenceIndex: 0,
-  sequencePosition: -1,
+  groups: DEFAULT_PROMO_GROUPS,
+  groupIndex: 0,
+  videoIndex: 0,
   intervalTimer: null,
   holdTimer: null,
   cleanupTimer: null,
+  stallTimer: null,
+  retryTimer: null,
+  retryCount: 0,
+  playToken: 0,
+  resumePending: false,
+  resumeTime: 0,
+  handlingFailure: false,
   running: false,
 };
 
@@ -40,6 +65,7 @@ const readyAlertState = {
 const seenReadyEvents = loadSeenReadyEvents();
 
 let entries = [];
+let trackedEntries = [];
 let hasLoadedSnapshot = false;
 let overflowRefreshFrame = 0;
 
@@ -80,6 +106,11 @@ function plateParts(value) {
   return { style: "abu-dhabi", code: "AD", number: plate || "-" };
 }
 
+function isCompanyService(value) {
+  const company = String(value || "").trim();
+  return company !== "" && company !== "-";
+}
+
 function updateClock() {
   const now = new Date();
   const parts = new Intl.DateTimeFormat("en-AE", {
@@ -93,43 +124,179 @@ function updateClock() {
     month: "short",
     timeZone: "Asia/Dubai",
   }).format(now).toUpperCase();
+  clockHijriDate.textContent = new Intl.DateTimeFormat(
+    "ar-AE-u-ca-islamic-umalqura-nu-arab",
+    {
+      day: "numeric",
+      month: "long",
+      timeZone: "Asia/Dubai",
+    },
+  ).format(now);
   clockHours.textContent = parts.find((part) => part.type === "hour")?.value || "00";
   clockMinutes.textContent = parts.find((part) => part.type === "minute")?.value || "00";
 }
 
-function schedulePromo() {
+let readyAudioContext = null;
+let readyChimeBuffer = null;
+let readyChimeUnlockPromise = null;
+let soundPromptTimer = null;
+let soundPromptExpired = false;
+
+function setSoundPromptVisible(visible) {
+  const shouldShow = READY_CHIME_PROMPT_ENABLED && visible && !soundPromptExpired;
+  soundPrompt.classList.toggle("is-hidden", !shouldShow);
+  soundPrompt.setAttribute("aria-hidden", String(!shouldShow));
+}
+
+async function enableReadyChime() {
+  if (!READY_CHIME_ENABLED || readyChimeBuffer) return;
+  if (readyChimeUnlockPromise) return readyChimeUnlockPromise;
+
+  readyChimeUnlockPromise = (async () => {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) throw new Error("Web Audio is unavailable");
+
+    readyAudioContext ||= new AudioContextClass();
+    await readyAudioContext.resume();
+    const response = await fetch(readyChime.currentSrc || readyChime.src, {
+      cache: "force-cache",
+    });
+    if (!response.ok) throw new Error(`Chime request returned HTTP ${response.status}`);
+    readyChimeBuffer = await readyAudioContext.decodeAudioData(
+      await response.arrayBuffer(),
+    );
+    window.clearTimeout(soundPromptTimer);
+    setSoundPromptVisible(false);
+  })();
+
+  try {
+    await readyChimeUnlockPromise;
+  } catch (error) {
+    console.warn("Completion sound could not be enabled.", error);
+    setSoundPromptVisible(true);
+  } finally {
+    readyChimeUnlockPromise = null;
+  }
+}
+
+function playReadyChime() {
+  if (!READY_CHIME_ENABLED) return;
+
+  if (readyAudioContext && readyChimeBuffer) {
+    readyAudioContext.resume()
+      .then(() => {
+        const source = readyAudioContext.createBufferSource();
+        source.buffer = readyChimeBuffer;
+        source.connect(readyAudioContext.destination);
+        source.start(0);
+      })
+      .catch((error) => {
+        console.warn("Ready chime could not play.", error);
+        setSoundPromptVisible(true);
+      });
+    return;
+  }
+
+  readyChime.volume = 1;
+  readyChime.currentTime = 0;
+  readyChime.play().catch((error) => {
+    console.warn("Ready chime needs TV permission.", error);
+    setSoundPromptVisible(true);
+  });
+}
+
+if (READY_CHIME_ENABLED && READY_CHIME_PROMPT_ENABLED) {
+  setSoundPromptVisible(true);
+  soundEnable.addEventListener("click", enableReadyChime);
+  window.setTimeout(() => soundEnable.focus(), 250);
+  soundPromptTimer = window.setTimeout(() => {
+    soundPromptExpired = true;
+    setSoundPromptVisible(false);
+  }, SOUND_PROMPT_TIMEOUT_MS);
+} else {
+  setSoundPromptVisible(false);
+}
+
+function schedulePromo(delay = PROMO_INTERVAL_MS) {
   window.clearTimeout(promoState.intervalTimer);
-  promoState.intervalTimer = window.setTimeout(startPromo, PROMO_INTERVAL_MS);
+  promoState.intervalTimer = window.setTimeout(startPromo, delay);
 }
 
 function postponePromoForLiveUpdate() {
-  window.clearTimeout(promoState.intervalTimer);
+  if (!promoState.running) return;
 
-  if (promoState.running) {
-    window.clearTimeout(promoState.holdTimer);
-    window.clearTimeout(promoState.cleanupTimer);
-    promoPlayer.classList.remove("is-visible");
-    resetPromoVideos();
-    promoState.running = false;
-    promoState.sequenceIndex =
-      (promoState.sequenceIndex + 1) % PROMO_SEQUENCES.length;
+  window.clearTimeout(promoState.holdTimer);
+  window.clearTimeout(promoState.cleanupTimer);
+  window.clearTimeout(promoState.retryTimer);
+  clearPromoStallTimer();
+  promoState.playToken += 1;
+  promoState.resumeTime = Number.isFinite(promoVideo.currentTime)
+    ? promoVideo.currentTime
+    : 0;
+  promoState.resumePending = true;
+  promoState.handlingFailure = false;
+  promoState.running = false;
+  promoVideo.pause();
+  promoVideo.classList.remove("is-active");
+  promoPlayer.classList.remove("is-visible");
+  schedulePromo(PROMO_RESUME_DELAY_MS);
+}
+
+function normalizePromoGroups(value) {
+  if (!Array.isArray(value?.groups)) return [];
+
+  return value.groups
+    .map((group) => {
+      const videos = Array.isArray(group?.videos)
+        ? group.videos
+          .map((source) => String(source || "").trim())
+          .filter(Boolean)
+        : [];
+      const requestedHold = Number(group?.finalFrameHoldMs || 0);
+      return {
+        videos,
+        finalFrameHoldMs: Number.isFinite(requestedHold)
+          ? Math.max(0, Math.min(requestedHold, 10_000))
+          : 0,
+      };
+    })
+    .filter((group) => group.videos.length > 0);
+}
+
+async function loadPromoGroups() {
+  try {
+    const response = await fetch("/promos.json", { cache: "no-cache" });
+    if (!response.ok) throw new Error(`Promo playlist returned HTTP ${response.status}`);
+    const groups = normalizePromoGroups(await response.json());
+    if (!groups.length) throw new Error("Promo playlist has no playable groups.");
+    return groups;
+  } catch (error) {
+    console.warn("Using the built-in promo playlist.", error);
+    return DEFAULT_PROMO_GROUPS;
   }
-
-  schedulePromo();
 }
 
-function currentPromoSequence() {
-  return PROMO_SEQUENCES[promoState.sequenceIndex];
+function currentPromoGroup() {
+  return promoState.groups[promoState.groupIndex] || promoState.groups[0];
 }
 
-function resetPromoVideos() {
-  promoVideos.forEach((video) => {
-    video.pause();
-    video.classList.remove("is-active");
-    video.currentTime = 0;
-  });
-  promoState.activeIndex = -1;
-  promoState.sequencePosition = -1;
+function currentPromoSource() {
+  return currentPromoGroup()?.videos[promoState.videoIndex] || "";
+}
+
+function clearPromoStallTimer() {
+  window.clearTimeout(promoState.stallTimer);
+  promoState.stallTimer = null;
+}
+
+function armPromoStallTimer() {
+  if (!promoState.running) return;
+  clearPromoStallTimer();
+  promoState.stallTimer = window.setTimeout(() => {
+    promoState.stallTimer = null;
+    if (!promoState.running) return;
+    handlePromoFailure();
+  }, PROMO_STALL_TIMEOUT_MS);
 }
 
 function playVideoWhenReady(video) {
@@ -190,69 +357,93 @@ function startPromo() {
   }
 
   promoState.running = true;
-  resetPromoVideos();
-  const firstIndex = currentPromoSequence().videoIndexes[0];
-  const firstVideo = promoVideos[firstIndex];
-  promoState.sequencePosition = 0;
-  promoState.activeIndex = firstIndex;
-  playVideoWhenReady(firstVideo)
-    .then(() => {
-      if (!promoState.running || promoState.activeIndex !== firstIndex) return;
-      firstVideo.classList.add("is-active");
-      window.requestAnimationFrame(() => promoPlayer.classList.add("is-visible"));
-    })
-    .catch(() => advancePromo(firstIndex));
+  playCurrentPromo();
 }
 
-function crossfadePromo(fromIndex, toIndex) {
-  const currentVideo = promoVideos[fromIndex];
-  const nextVideo = promoVideos[toIndex];
-  if (!nextVideo) {
+function playCurrentPromo() {
+  if (!promoState.running) return;
+  const source = currentPromoSource();
+  if (!source) {
     finishPromo();
     return;
   }
 
-  window.clearTimeout(promoState.cleanupTimer);
-  promoState.activeIndex = toIndex;
-  nextVideo.currentTime = 0;
-  playVideoWhenReady(nextVideo)
+  const token = ++promoState.playToken;
+  const sourceChanged = promoVideo.getAttribute("src") !== source;
+  promoState.handlingFailure = false;
+  clearPromoStallTimer();
+  promoVideo.classList.remove("is-active");
+
+  if (sourceChanged) {
+    promoVideo.src = source;
+    promoVideo.load();
+  } else if (promoState.resumePending && Number.isFinite(promoVideo.duration)) {
+    const finalPlayableTime = Math.max(0, promoVideo.duration - 0.25);
+    promoVideo.currentTime = Math.min(promoState.resumeTime, finalPlayableTime);
+  }
+
+  playVideoWhenReady(promoVideo)
     .then(() => {
-      if (!promoState.running || promoState.activeIndex !== toIndex) return;
-      nextVideo.classList.add("is-active");
-      promoPlayer.classList.add("is-visible");
-
-      window.requestAnimationFrame(() => {
-        currentVideo?.classList.remove("is-active");
-      });
-
-      promoState.cleanupTimer = window.setTimeout(() => {
-        currentVideo?.pause();
-        if (currentVideo) currentVideo.currentTime = 0;
-      }, PROMO_CROSSFADE_MS + 80);
+      if (!promoState.running || promoState.playToken !== token) return;
+      promoState.resumePending = false;
+      promoState.resumeTime = 0;
+      promoState.handlingFailure = false;
+      promoVideo.classList.add("is-active");
+      window.requestAnimationFrame(() => promoPlayer.classList.add("is-visible"));
     })
-    .catch(() => advancePromo(toIndex));
+    .catch(handlePromoFailure);
 }
 
-function handlePromoEnded(index) {
-  if (!promoState.running || index !== promoState.activeIndex) return;
+function handlePromoFailure() {
+  if (!promoState.running || promoState.handlingFailure) return;
+  promoState.handlingFailure = true;
+  clearPromoStallTimer();
+  promoState.playToken += 1;
 
-  const sequence = currentPromoSequence();
-  const isLastVideo = promoState.sequencePosition === sequence.videoIndexes.length - 1;
-  if (isLastVideo && sequence.finalFrameHoldMs > 0) {
-    promoState.holdTimer = window.setTimeout(finishPromo, sequence.finalFrameHoldMs);
+  if (promoState.retryCount < 1) {
+    promoState.retryCount += 1;
+    promoState.resumePending = false;
+    promoState.resumeTime = 0;
+    promoVideo.pause();
+    promoVideo.currentTime = 0;
+    promoVideo.load();
+    promoState.retryTimer = window.setTimeout(() => {
+      promoState.handlingFailure = false;
+      playCurrentPromo();
+    }, PROMO_RETRY_DELAY_MS);
     return;
   }
 
-  advancePromo(index);
+  promoState.handlingFailure = false;
+  advancePromo();
 }
 
-function advancePromo(index) {
-  if (!promoState.running || index !== promoState.activeIndex) return;
-  const sequence = currentPromoSequence();
-  const nextPosition = promoState.sequencePosition + 1;
-  if (nextPosition < sequence.videoIndexes.length) {
-    promoState.sequencePosition = nextPosition;
-    crossfadePromo(index, sequence.videoIndexes[nextPosition]);
+function handlePromoEnded() {
+  if (!promoState.running) return;
+  clearPromoStallTimer();
+
+  const group = currentPromoGroup();
+  const isLastVideo = promoState.videoIndex === group.videos.length - 1;
+  if (isLastVideo && group.finalFrameHoldMs > 0) {
+    promoState.holdTimer = window.setTimeout(finishPromo, group.finalFrameHoldMs);
+    return;
+  }
+
+  advancePromo();
+}
+
+function advancePromo() {
+  if (!promoState.running) return;
+  clearPromoStallTimer();
+  window.clearTimeout(promoState.retryTimer);
+  const group = currentPromoGroup();
+  const nextIndex = promoState.videoIndex + 1;
+  if (nextIndex < group.videos.length) {
+    promoState.videoIndex = nextIndex;
+    promoState.retryCount = 0;
+    promoState.resumePending = false;
+    promoState.resumeTime = 0;
+    playCurrentPromo();
   } else {
     finishPromo();
   }
@@ -261,31 +452,43 @@ function advancePromo(index) {
 function finishPromo() {
   window.clearTimeout(promoState.holdTimer);
   window.clearTimeout(promoState.cleanupTimer);
+  window.clearTimeout(promoState.retryTimer);
+  clearPromoStallTimer();
+  promoState.playToken += 1;
+  promoState.running = false;
+  promoState.handlingFailure = false;
+  promoState.resumePending = false;
+  promoState.resumeTime = 0;
+  promoState.retryCount = 0;
+  promoState.videoIndex = 0;
+  promoState.groupIndex = (promoState.groupIndex + 1) % promoState.groups.length;
   promoPlayer.classList.remove("is-visible");
 
   promoState.cleanupTimer = window.setTimeout(() => {
-    resetPromoVideos();
-    promoState.running = false;
-    promoState.sequenceIndex = (promoState.sequenceIndex + 1) % PROMO_SEQUENCES.length;
+    promoVideo.pause();
+    promoVideo.classList.remove("is-active");
+    promoVideo.currentTime = 0;
     schedulePromo();
-  }, PROMO_CROSSFADE_MS);
+  }, PROMO_FADE_MS);
 }
 
-function initPromoPlayer() {
-  promoVideos.forEach((video, index) => {
-    video.defaultMuted = true;
-    video.addEventListener("ended", () => handlePromoEnded(index));
-    video.addEventListener("error", () => advancePromo(index));
-    video.load();
-  });
+async function initPromoPlayer() {
+  promoVideo.defaultMuted = true;
+  promoVideo.addEventListener("ended", handlePromoEnded);
+  promoVideo.addEventListener("error", handlePromoFailure);
+  promoVideo.addEventListener("playing", clearPromoStallTimer);
+  promoVideo.addEventListener("canplay", clearPromoStallTimer);
+  promoVideo.addEventListener("waiting", armPromoStallTimer);
+  promoVideo.addEventListener("stalled", armPromoStallTimer);
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && promoState.running) {
-      promoVideos[promoState.activeIndex]?.play().catch(() => {});
+      promoVideo.play().catch(handlePromoFailure);
     }
   });
 
-  schedulePromo();
+  promoState.groups = await loadPromoGroups();
+  schedulePromo(PROMO_INITIAL_DELAY_MS);
 }
 
 function entryIsReady(entry) {
@@ -360,6 +563,7 @@ function showNextReadyAlert() {
   readyAlertPlate.textContent = String(entry.licensePlate || "Vehicle").trim();
   readyAlert.setAttribute("aria-hidden", "false");
   requestAnimationFrame(() => readyAlert.classList.add("is-visible"));
+  playReadyChime();
 
   readyAlertState.timer = window.setTimeout(() => {
     readyAlert.classList.remove("is-visible");
@@ -367,8 +571,8 @@ function showNextReadyAlert() {
       readyAlert.setAttribute("aria-hidden", "true");
       readyAlertState.active = false;
       showNextReadyAlert();
-    }, 450);
-  }, READY_ALERT_DURATION_MS);
+    }, READY_ALERT_FADE_MS);
+  }, READY_ALERT_DURATION_MS - READY_ALERT_FADE_MS);
 }
 
 function fillCell(node, selector, value) {
@@ -474,15 +678,18 @@ function makeEntryNode(entry, isNew) {
   fillCell(node, ".status-value", ready ? "Ready" : "In Progress");
 
   const plate = plateParts(entry.licensePlate);
+  const companyService = isCompanyService(entry.company);
+  const displayedPlateStyle = companyService ? "abu-dhabi" : plate.style;
   const plateElement = node.querySelector(".vehicle-plate");
-  plateElement.classList.toggle("is-dubai", plate.style === "dubai");
-  plateElement.classList.toggle("is-abu-dhabi", plate.style !== "dubai");
+  plateElement.classList.toggle("is-dubai", displayedPlateStyle === "dubai");
+  plateElement.classList.toggle("is-abu-dhabi", displayedPlateStyle === "abu-dhabi");
+  plateElement.classList.toggle("is-commercial", companyService);
   fillCell(node, ".plate-code", plate.code);
   fillCell(node, ".plate-letters", plate.code);
   fillScrollingCell(node, ".plate-number", plate.number);
   plateElement.setAttribute(
     "aria-label",
-    `${plate.style === "dubai" ? "Dubai" : "Abu Dhabi"} plate ${plate.code} ${plate.number}`,
+    `${companyService ? "Abu Dhabi commercial" : displayedPlateStyle === "dubai" ? "Dubai" : "Abu Dhabi"} plate ${plate.code} ${plate.number}`,
   );
 
   node.querySelector(".price-cell").dataset.free = String(entry.price).toLowerCase() === "free";
@@ -510,10 +717,11 @@ function render(nextEntries, newEntryId = "") {
     Array.from(entriesElement.children).map((node) => [node.dataset.id, node.getBoundingClientRect()]),
   );
 
-  entries = nextEntries.slice(0, 10);
+  trackedEntries = nextEntries.slice(0, TRACKED_ENTRY_LIMIT);
+  entries = trackedEntries.slice(0, DISPLAY_ENTRY_LIMIT);
   const fragment = document.createDocumentFragment();
   entries.forEach((entry) => fragment.append(makeEntryNode(entry, entry.id === newEntryId)));
-  for (let index = entries.length; index < 10; index += 1) {
+  for (let index = entries.length; index < DISPLAY_ENTRY_LIMIT; index += 1) {
     fragment.append(makePlaceholderNode(index));
   }
   entriesElement.replaceChildren(fragment);
@@ -550,7 +758,7 @@ function sortedFirebaseEntries(value) {
     .sort((first, second) => {
       return new Date(second.timestamp).getTime() - new Date(first.timestamp).getTime();
     })
-    .slice(0, 10);
+    .slice(0, TRACKED_ENTRY_LIMIT);
 }
 
 async function connectFirebase() {
@@ -558,22 +766,24 @@ async function connectFirebase() {
   firebaseConnectController = new AbortController();
   const controller = firebaseConnectController;
 
-  firebaseStream?.close();
-  firebaseStream = null;
+  closeFirebaseStreams();
   clearTimeout(firebaseRefreshTimer);
-  scheduleFirebaseEmptyRetry();
+  clearTimeout(firebaseHealthTimer);
+  clearTimeout(firebaseReconnectTimer);
+  firebaseReconnectTimer = null;
   setConnection(false, "Connecting");
 
   try {
     const config = window.AL_RAKED_FIREBASE_CONFIG;
     const session = await getFirebaseAnonymousSession(config.apiKey, controller.signal);
     if (controller.signal.aborted) return;
-    openFirebaseStream(config, session);
+    openFirebaseStreams(config, session);
   } catch (error) {
     if (controller.signal.aborted) return;
     console.error(error);
     setConnection(false, "Connection failed");
-    scheduleFirebaseEmptyRetry();
+    firebaseReconnectAttempts += 1;
+    scheduleFirebaseReconnect();
   } finally {
     if (firebaseConnectController === controller) {
       firebaseConnectController = null;
@@ -582,32 +792,69 @@ async function connectFirebase() {
 }
 
 const FIREBASE_REFRESH_TOKEN_KEY = "al-raked-firebase-refresh-token-v1";
-const FIREBASE_EMPTY_RETRY_MS = 60_000;
+const FIREBASE_REMOTE_COMMAND_KEY = "al-raked-last-remote-command-v1";
+const FIREBASE_RECONNECT_BASE_MS = 3_000;
+const FIREBASE_RECONNECT_MAX_MS = 60_000;
+const FIREBASE_EMPTY_RECONNECT_MS = 60_000;
+const FIREBASE_HEALTH_RECONNECT_MS = 5 * 60 * 1000;
 let firebaseSlots = {};
+let firebaseControlCommand = {};
 let firebaseStream = null;
+let firebaseControlStream = null;
 let firebaseRefreshTimer = null;
-let firebaseEmptyRetryTimer = null;
+let firebaseReconnectTimer = null;
+let firebaseHealthTimer = null;
 let firebaseConnectController = null;
+let firebaseReconnectAttempts = 0;
 
-function clearFirebaseEmptyRetry() {
-  clearTimeout(firebaseEmptyRetryTimer);
-  firebaseEmptyRetryTimer = null;
+function closeFirebaseStreams() {
+  firebaseStream?.close();
+  firebaseControlStream?.close();
+  firebaseStream = null;
+  firebaseControlStream = null;
 }
 
-function scheduleFirebaseEmptyRetry() {
-  if (sortedFirebaseEntries(firebaseSlots).length > 0) {
-    clearFirebaseEmptyRetry();
-    return;
+function scheduleFirebaseReconnect(delayOverride) {
+  if (firebaseReconnectTimer !== null) {
+    if (delayOverride !== 0) return;
+    clearTimeout(firebaseReconnectTimer);
+    firebaseReconnectTimer = null;
   }
-  if (firebaseEmptyRetryTimer !== null) return;
 
-  firebaseEmptyRetryTimer = window.setTimeout(() => {
-    firebaseEmptyRetryTimer = null;
-    if (sortedFirebaseEntries(firebaseSlots).length > 0) return;
+  const calculatedDelay = Math.min(
+    FIREBASE_RECONNECT_BASE_MS * (2 ** Math.max(0, firebaseReconnectAttempts - 1)),
+    FIREBASE_RECONNECT_MAX_MS,
+  );
+  const delay = Number.isFinite(delayOverride)
+    ? Math.max(0, delayOverride)
+    : calculatedDelay;
+
+  firebaseReconnectTimer = window.setTimeout(() => {
+    firebaseReconnectTimer = null;
+    if (document.visibilityState === "hidden") {
+      scheduleFirebaseReconnect(FIREBASE_RECONNECT_BASE_MS);
+      return;
+    }
 
     setConnection(false, "Reconnecting");
     connectFirebase();
-  }, FIREBASE_EMPTY_RETRY_MS);
+  }, delay);
+}
+
+function scheduleFirebaseHealthReconnect() {
+  clearTimeout(firebaseHealthTimer);
+  const delay = hasLoadedSnapshot && sortedFirebaseEntries(firebaseSlots).length > 0
+    ? FIREBASE_HEALTH_RECONNECT_MS
+    : FIREBASE_EMPTY_RECONNECT_MS;
+  firebaseHealthTimer = window.setTimeout(() => {
+    if (document.visibilityState === "hidden") {
+      scheduleFirebaseHealthReconnect();
+      return;
+    }
+
+    setConnection(false, "Refreshing");
+    connectFirebase();
+  }, delay);
 }
 
 async function getFirebaseAnonymousSession(apiKey, signal) {
@@ -725,24 +972,66 @@ function applyFirebaseStreamChange(eventType, payload) {
   } else {
     queueFreshUnseenReadyAlerts(nextEntries);
   }
-  if (nextEntries.length > 0) {
-    clearFirebaseEmptyRetry();
-  } else {
-    scheduleFirebaseEmptyRetry();
-  }
   hasLoadedSnapshot = true;
   setConnection(true, "Live");
+  scheduleFirebaseHealthReconnect();
 }
 
-function openFirebaseStream(config, session) {
-  firebaseStream?.close();
+function applyFirebaseControlChange(eventType, payload) {
+  const path = payload?.path || "/";
+  if (path === "/") {
+    firebaseControlCommand = eventType === "patch"
+      ? { ...firebaseControlCommand, ...(payload.data || {}) }
+      : payload.data || {};
+  } else {
+    const field = path.replace(/^\//, "").split("/")[0];
+    if (!field) return;
+    if (payload.data === null) {
+      delete firebaseControlCommand[field];
+    } else {
+      firebaseControlCommand[field] = payload.data;
+    }
+  }
+
+  const command = firebaseControlCommand;
+  const commandId = String(command.id || "").trim();
+  const issuedAt = new Date(command.issuedAt).getTime();
+  const expiresAt = new Date(command.expiresAt).getTime();
+  const lastCommandId = localStorage.getItem(FIREBASE_REMOTE_COMMAND_KEY) || "";
+  if (
+    command.type !== "reload" ||
+    !commandId ||
+    commandId === lastCommandId ||
+    !Number.isFinite(issuedAt) ||
+    !Number.isFinite(expiresAt) ||
+    issuedAt > Date.now() + 60_000 ||
+    expiresAt <= Date.now()
+  ) {
+    return;
+  }
+
+  localStorage.setItem(FIREBASE_REMOTE_COMMAND_KEY, commandId);
+  window.location.reload();
+}
+
+function openFirebaseStreams(config, session) {
+  closeFirebaseStreams();
   clearTimeout(firebaseRefreshTimer);
+  clearTimeout(firebaseReconnectTimer);
+  firebaseReconnectTimer = null;
 
   const databaseUrl = config.databaseURL.replace(/\/$/, "");
   firebaseStream = new EventSource(
     `${databaseUrl}/liveDisplay.json?auth=${encodeURIComponent(session.idToken)}`,
   );
-  scheduleFirebaseEmptyRetry();
+  firebaseControlStream = new EventSource(
+    `${databaseUrl}/displayControl/main.json?auth=${encodeURIComponent(session.idToken)}`,
+  );
+  firebaseStream.addEventListener("open", () => {
+    firebaseReconnectAttempts = 0;
+    setConnection(true, "Live");
+    scheduleFirebaseHealthReconnect();
+  });
   firebaseStream.addEventListener("put", (event) => {
     applyFirebaseStreamChange("put", JSON.parse(event.data));
   });
@@ -752,17 +1041,33 @@ function openFirebaseStream(config, session) {
   firebaseStream.addEventListener("cancel", (event) => {
     console.error("Firebase stream cancelled.", event.data);
     setConnection(false, "Connection failed");
-    scheduleFirebaseEmptyRetry();
+    firebaseReconnectAttempts += 1;
+    scheduleFirebaseReconnect();
   });
   firebaseStream.addEventListener("auth_revoked", () => {
     localStorage.removeItem(FIREBASE_REFRESH_TOKEN_KEY);
     setConnection(false, "Reconnecting");
-    connectFirebase();
+    scheduleFirebaseReconnect(0);
   });
   firebaseStream.onerror = () => {
     setConnection(false, "Reconnecting");
-    scheduleFirebaseEmptyRetry();
+    firebaseReconnectAttempts += 1;
+    scheduleFirebaseReconnect();
   };
+
+  firebaseControlStream.addEventListener("put", (event) => {
+    applyFirebaseControlChange("put", JSON.parse(event.data));
+  });
+  firebaseControlStream.addEventListener("patch", (event) => {
+    applyFirebaseControlChange("patch", JSON.parse(event.data));
+  });
+  firebaseControlStream.addEventListener("cancel", (event) => {
+    console.warn("Remote display control is unavailable.", event.data);
+  });
+  firebaseControlStream.addEventListener("auth_revoked", () => {
+    localStorage.removeItem(FIREBASE_REFRESH_TOKEN_KEY);
+    scheduleFirebaseReconnect(0);
+  });
 
   const refreshAfterSeconds = Math.max(60, session.expiresIn - 300);
   firebaseRefreshTimer = window.setTimeout(async () => {
@@ -771,11 +1076,12 @@ function openFirebaseStream(config, session) {
         config.apiKey,
         session.refreshToken,
       );
-      openFirebaseStream(config, refreshed);
+      openFirebaseStreams(config, refreshed);
     } catch (error) {
       console.error(error);
       localStorage.removeItem(FIREBASE_REFRESH_TOKEN_KEY);
-      connectFirebase();
+      firebaseReconnectAttempts += 1;
+      scheduleFirebaseReconnect();
     }
   }, refreshAfterSeconds * 1000);
 }
@@ -799,7 +1105,7 @@ function connectLocal() {
   });
   stream.addEventListener("status", (event) => {
     const payload = JSON.parse(event.data);
-    const previousEntry = entries.find((entry) => entry.id === payload.entry?.id);
+    const previousEntry = trackedEntries.find((entry) => entry.id === payload.entry?.id);
     if (hasLoadedSnapshot) postponePromoForLiveUpdate();
     render(payload.entries || []);
     if (
@@ -825,6 +1131,12 @@ render([]);
 
 if (useFirebase) {
   connectFirebase();
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted) scheduleFirebaseReconnect(0);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") scheduleFirebaseReconnect(0);
+  });
 } else {
   connectLocal();
 }

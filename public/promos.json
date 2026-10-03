@@ -1,0 +1,16 @@
+{
+  "groups": [
+    {
+      "videos": [
+        "/media/raked-relay.mp4"
+      ],
+      "finalFrameHoldMs": 0
+    },
+    {
+      "videos": [
+        "/media/oil.mp4"
+      ],
+      "finalFrameHoldMs": 3500
+    }
+  ]
+}
