@@ -10,6 +10,7 @@ const clockMinutes = document.getElementById("clock-minutes");
 const promoPlayer = document.getElementById("promo-player");
 const promoVideo = document.getElementById("promo-video");
 const readyChime = document.getElementById("ready-chime");
+const startupSound = document.getElementById("startup-sound");
 const soundPrompt = document.getElementById("sound-prompt");
 const soundEnable = document.getElementById("sound-enable");
 const readyAlert = document.getElementById("ready-alert");
@@ -67,6 +68,7 @@ const seenReadyEvents = loadSeenReadyEvents();
 let entries = [];
 let trackedEntries = [];
 let hasLoadedSnapshot = false;
+let hasPlayedStartupSound = false;
 let overflowRefreshFrame = 0;
 
 function displayTime(value) {
@@ -202,6 +204,16 @@ function playReadyChime() {
   readyChime.play().catch((error) => {
     console.warn("Ready chime needs TV permission.", error);
     setSoundPromptVisible(true);
+  });
+}
+
+function playStartupSoundOnce() {
+  if (hasPlayedStartupSound) return;
+  hasPlayedStartupSound = true;
+  startupSound.volume = 1;
+  startupSound.currentTime = 0;
+  startupSound.play().catch((error) => {
+    console.warn("Startup sound could not play.", error);
   });
 }
 
@@ -535,10 +547,10 @@ function queueFreshUnseenReadyAlerts(nextEntries) {
     .sort((first, second) => {
       return new Date(first.readyAt).getTime() - new Date(second.readyAt).getTime();
     })
-    .forEach(queueReadyAlert);
+    .forEach((entry) => queueReadyAlert(entry, true));
 }
 
-function queueReadyAlert(entry) {
+function queueReadyAlert(entry, suppressChime = false) {
   if (!entry || !entry.id || !entryIsReady(entry)) return;
 
   const alertKey = readyEventKey(entry);
@@ -549,7 +561,7 @@ function queueReadyAlert(entry) {
   if (alreadyQueued) return;
 
   markReadyEventSeen(alertKey);
-  readyAlertState.queue.push({ ...entry, alertKey });
+  readyAlertState.queue.push({ ...entry, alertKey, suppressChime });
   showNextReadyAlert();
 }
 
@@ -563,7 +575,7 @@ function showNextReadyAlert() {
   readyAlertPlate.textContent = String(entry.licensePlate || "Vehicle").trim();
   readyAlert.setAttribute("aria-hidden", "false");
   requestAnimationFrame(() => readyAlert.classList.add("is-visible"));
-  playReadyChime();
+  if (!entry.suppressChime) playReadyChime();
 
   readyAlertState.timer = window.setTimeout(() => {
     readyAlert.classList.remove("is-visible");
@@ -971,6 +983,7 @@ function applyFirebaseStreamChange(eventType, payload) {
     });
   } else {
     queueFreshUnseenReadyAlerts(nextEntries);
+    playStartupSoundOnce();
   }
   hasLoadedSnapshot = true;
   setConnection(true, "Live");
@@ -1095,6 +1108,7 @@ function connectLocal() {
     const nextEntries = payload.entries || [];
     render(nextEntries);
     queueFreshUnseenReadyAlerts(nextEntries);
+    playStartupSoundOnce();
     hasLoadedSnapshot = true;
   });
   stream.addEventListener("entry", (event) => {

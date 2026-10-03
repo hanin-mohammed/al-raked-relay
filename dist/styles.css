@@ -637,7 +637,7 @@ h1 {
 .plate-code {
   background: linear-gradient(150deg, #f21f2d, #b70714);
   color: #fff;
-  font-size: clamp(1.59rem, 2.18vw, 2.6rem);
+  font-size: clamp(1.65rem, 2.27vw, 2.7rem);
   font-weight: 900;
   line-height: 1;
   text-shadow: none;
@@ -670,21 +670,21 @@ h1 {
 
 .dubai-name {
   font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
-  font-size: clamp(0.57rem, 0.74vw, 0.85rem);
+  font-size: clamp(0.59rem, 0.77vw, 0.88rem);
   font-weight: 800;
   letter-spacing: 0.02em;
 }
 
 .plate-letters {
   font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
-  font-size: clamp(1.42rem, 2.01vw, 2.36rem);
+  font-size: clamp(1.48rem, 2.09vw, 2.45rem);
   font-weight: 700;
   letter-spacing: 0.1em;
 }
 
 .vehicle-plate.is-dubai .plate-number {
   font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
-  font-size: clamp(2.36rem, 3.3vw, 3.84rem);
+  font-size: clamp(2.45rem, 3.43vw, 3.99rem);
   font-weight: 700;
   letter-spacing: 0.045em;
   position: relative;
@@ -702,7 +702,7 @@ h1 {
   padding: 0 0.14rem;
   overflow: hidden;
   color: #090a0c;
-  font-size: clamp(2.12rem, 3.01vw, 3.54rem);
+  font-size: clamp(2.2rem, 3.13vw, 3.68rem);
   font-weight: 900;
   letter-spacing: 0.015em;
   line-height: 1;
@@ -878,12 +878,12 @@ h1 {
   }
 
   .plate-code {
-    font-size: clamp(1.3rem, 1.71vw, 1.83rem);
+    font-size: clamp(1.35rem, 1.78vw, 1.9rem);
   }
 
   .plate-number,
   .vehicle-plate.is-dubai .plate-number {
-    font-size: clamp(1.77rem, 2.48vw, 2.6rem);
+    font-size: clamp(1.84rem, 2.58vw, 2.7rem);
   }
 }
 
@@ -966,7 +966,7 @@ h1 {
     grid-column: 1 / -1;
     grid-row: 3;
     border-bottom: 1px solid var(--line);
-    font-size: 1.65rem;
+    font-size: 1.72rem;
   }
 
   .plate-cell {
@@ -1019,7 +1019,7 @@ h1 {
   }
 
   .plate-number {
-    font-size: 2.36rem;
+    font-size: 2.45rem;
   }
 
   .empty-state {
