@@ -30,6 +30,7 @@ const READY_CHIME_SRC = "/media/ready-chime.mp3?v=20261003-ready-gate";
 const READY_SEQUENCE_SRCS = [
   "/media/ready-sequence-1.mp3?v=20261003-ready-voice",
   "/media/ready-sequence-2.mp3?v=20261003-ready-voice",
+  "/media/ready-sequence-3.mp3?v=20261003-ready-voice",
 ];
 const READY_SEQUENCE_MAX_MS = 20_000;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
