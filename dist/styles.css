@@ -200,14 +200,14 @@ body::after {
   padding:
     max(clamp(0.15rem, 0.2vw, 0.25rem), env(safe-area-inset-top))
     max(clamp(0.65rem, 1.25vw, 1.5rem), env(safe-area-inset-right))
-    max(clamp(0.65rem, 1.25vw, 1.5rem), env(safe-area-inset-bottom))
+    max(calc(clamp(0.65rem, 1.25vw, 1.5rem) - 5px), env(safe-area-inset-bottom))
     max(clamp(0.65rem, 1.25vw, 1.5rem), env(safe-area-inset-left));
   gap: clamp(0.45rem, 0.8vh, 0.7rem);
 }
 
 .display-header {
   display: flex;
-  min-height: clamp(3rem, 5.3vh, 3.7rem);
+  min-height: calc(clamp(3rem, 5.3vh, 3.7rem) - 5px);
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
@@ -585,10 +585,10 @@ h1 {
 
 .vehicle-plate {
   display: grid;
-  width: min(100%, 14.5rem);
+  width: min(92%, 13.35rem);
   min-width: 0;
-  height: clamp(2.7rem, 4.9vh, 3.4rem);
-  grid-template-columns: clamp(3rem, 3.85vw, 4.25rem) minmax(0, 1fr);
+  height: clamp(2.48rem, 4.5vh, 3.13rem);
+  grid-template-columns: clamp(2.76rem, 3.54vw, 3.91rem) minmax(0, 1fr);
   overflow: hidden;
   border: clamp(1.5px, 0.13vw, 2.5px) solid #202124;
   border-radius: 0.35rem;
@@ -622,7 +622,7 @@ h1 {
 }
 
 .vehicle-plate.is-dubai {
-  grid-template-columns: clamp(3.2rem, 4.15vw, 4.6rem) minmax(0, 1fr);
+  grid-template-columns: clamp(2.94rem, 3.82vw, 4.23rem) minmax(0, 1fr);
 }
 
 .vehicle-plate.is-dubai .plate-code {
@@ -781,7 +781,7 @@ h1 {
   }
 
   .display-header {
-    min-height: clamp(2.65rem, 6vh, 3.15rem);
+    min-height: calc(clamp(2.65rem, 6vh, 3.15rem) - 5px);
   }
 
   .brand-logo {
@@ -830,13 +830,13 @@ h1 {
   }
 
   .vehicle-plate {
-    width: min(100%, 12.4rem);
-    height: clamp(2.2rem, 5.05vh, 2.6rem);
-    grid-template-columns: clamp(2.6rem, 3.25vw, 3.4rem) minmax(0, 1fr);
+    width: min(92%, 11.4rem);
+    height: clamp(2.02rem, 4.65vh, 2.4rem);
+    grid-template-columns: clamp(2.39rem, 2.99vw, 3.13rem) minmax(0, 1fr);
   }
 
   .vehicle-plate.is-dubai {
-    grid-template-columns: clamp(2.8rem, 3.45vw, 3.65rem) minmax(0, 1fr);
+    grid-template-columns: clamp(2.58rem, 3.17vw, 3.36rem) minmax(0, 1fr);
   }
 
   .plate-code {
