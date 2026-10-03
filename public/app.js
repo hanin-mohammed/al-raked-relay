@@ -26,6 +26,7 @@ const DISPLAY_ENTRY_LIMIT = 13;
 const TRACKED_ENTRY_LIMIT = 30;
 const READY_ALERT_DURATION_MS = 5_000;
 const READY_ALERT_FADE_MS = 450;
+const READY_CHIME_STARTUP_MUTE_MS = 8_000;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
 const SOUND_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
@@ -69,6 +70,7 @@ let entries = [];
 let trackedEntries = [];
 let hasLoadedSnapshot = false;
 let hasPlayedStartupSound = false;
+let readyChimeMutedUntil = 0;
 let overflowRefreshFrame = 0;
 
 function displayTime(value) {
@@ -182,7 +184,7 @@ async function enableReadyChime() {
 }
 
 function playReadyChime() {
-  if (!READY_CHIME_ENABLED) return;
+  if (!READY_CHIME_ENABLED || Date.now() < readyChimeMutedUntil) return;
 
   if (readyAudioContext && readyChimeBuffer) {
     readyAudioContext.resume()
@@ -210,7 +212,8 @@ function playReadyChime() {
 function playStartupSoundOnce() {
   if (hasPlayedStartupSound) return;
   hasPlayedStartupSound = true;
-  startupSound.volume = 1;
+  readyChimeMutedUntil = Date.now() + READY_CHIME_STARTUP_MUTE_MS;
+  startupSound.volume = 0.5;
   startupSound.currentTime = 0;
   startupSound.play().catch((error) => {
     console.warn("Startup sound could not play.", error);
