@@ -26,11 +26,13 @@ const TRACKED_ENTRY_LIMIT = 30;
 const READY_ALERT_DURATION_MS = 5_000;
 const READY_ALERT_FADE_MS = 450;
 const STARTUP_SOUND_MAX_MS = 12_000;
-const READY_CHIME_SRC = "/media/ready-chime.mp3?v=20261003-ready-gate";
+// One control for every Relay sound. Use a value from 0 (silent) to 1 (full volume).
+const MASTER_AUDIO_VOLUME = 0.2;
+const READY_CHIME_SRC = "/media/ready-chime.mp3?v=20261004-normalized";
 const READY_SEQUENCE_SRCS = [
-  "/media/ready-sequence-1.mp3?v=20261003-ready-voice",
-  "/media/ready-sequence-2.mp3?v=20261003-ready-voice",
-  "/media/ready-sequence-3.mp3?v=20261003-ready-voice",
+  "/media/ready-sequence-1.mp3?v=20261004-normalized",
+  "/media/ready-sequence-2.mp3?v=20261004-normalized",
+  "/media/ready-sequence-3.mp3?v=20261004-normalized",
 ];
 const READY_SEQUENCE_MAX_MS = 20_000;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
@@ -147,6 +149,7 @@ function updateClock() {
 }
 
 let readyAudioContext = null;
+let readyAudioGainNode = null;
 let readyChimeBuffer = null;
 let readyChimeUnlockPromise = null;
 let readyChime = null;
@@ -165,7 +168,7 @@ function ensureReadyChimePlayer() {
   if (readyChime) return readyChime;
   readyChime = new Audio(READY_CHIME_SRC);
   readyChime.preload = "auto";
-  readyChime.volume = 1;
+  readyChime.volume = MASTER_AUDIO_VOLUME;
   readyChime.load();
   return readyChime;
 }
@@ -175,7 +178,7 @@ function ensureReadySequencePlayers() {
   readySequencePlayers = READY_SEQUENCE_SRCS.map((source) => {
     const player = new Audio(source);
     player.preload = "auto";
-    player.volume = 1;
+    player.volume = MASTER_AUDIO_VOLUME;
     player.load();
     return player;
   });
@@ -247,6 +250,11 @@ async function enableReadyChime() {
     if (!AudioContextClass) throw new Error("Web Audio is unavailable");
 
     readyAudioContext ||= new AudioContextClass();
+    if (!readyAudioGainNode) {
+      readyAudioGainNode = readyAudioContext.createGain();
+      readyAudioGainNode.connect(readyAudioContext.destination);
+    }
+    readyAudioGainNode.gain.value = MASTER_AUDIO_VOLUME;
     await readyAudioContext.resume();
     const response = await fetch(readyChime.currentSrc || readyChime.src, {
       cache: "force-cache",
@@ -279,7 +287,7 @@ function playReadyChime() {
         if (!readyChimeArmed || startupSoundActive) return;
         const source = readyAudioContext.createBufferSource();
         source.buffer = readyChimeBuffer;
-        source.connect(readyAudioContext.destination);
+        source.connect(readyAudioGainNode);
         activeReadyChimeSource = source;
         source.addEventListener("ended", () => {
           if (activeReadyChimeSource === source) activeReadyChimeSource = null;
@@ -293,7 +301,7 @@ function playReadyChime() {
     return;
   }
 
-  readyChime.volume = 1;
+  readyChime.volume = MASTER_AUDIO_VOLUME;
   readyChime.currentTime = 0;
   readyChime.play().catch((error) => {
     console.warn("Ready chime needs TV permission.", error);
@@ -349,7 +357,7 @@ function playStartupSoundOnce() {
   startupSoundActive = true;
   readyChimeArmed = false;
   stopReadyChimePlayback();
-  startupSound.volume = 0.5;
+  startupSound.volume = MASTER_AUDIO_VOLUME;
   startupSound.currentTime = 0;
   startupSoundWatchdog = window.setTimeout(() => {
     startupSound.pause();

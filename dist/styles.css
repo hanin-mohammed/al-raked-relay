@@ -676,10 +676,11 @@ h1 {
 .vehicle-plate.is-dubai .dubai-code {
   display: flex;
   flex-direction: column;
-  gap: 0.08em;
+  justify-content: space-between;
+  gap: 0;
+  padding: 0.08em 0 0.16em;
   background: #fff;
   color: #090a0c;
-  line-height: 0.9;
 }
 
 .dubai-name {
@@ -687,22 +688,23 @@ h1 {
   font-size: clamp(0.59rem, 0.77vw, 0.88rem);
   font-weight: 800;
   letter-spacing: 0.02em;
+  line-height: 1;
 }
 
 .plate-letters {
   font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
-  font-size: clamp(1.48rem, 2.09vw, 2.45rem);
+  font-size: clamp(0.975rem, 1.3875vw, 1.6125rem);
   font-weight: 700;
   letter-spacing: 0.1em;
+  line-height: 0.82;
 }
 
 .vehicle-plate.is-dubai .plate-number {
   font-family: "Barlow Condensed", "Arial Narrow", sans-serif;
-  font-size: clamp(2.45rem, 3.43vw, 3.99rem);
+  font-size: clamp(1.94709375rem, 2.716875vw, 3.12440625rem);
   font-weight: 700;
-  letter-spacing: 0.045em;
-  position: relative;
-  top: -0.07em;
+  letter-spacing: calc(0.025em + 1px);
+  line-height: 0.86;
 }
 
 .vehicle-plate.is-abu-dhabi .plate-code,
@@ -915,9 +917,12 @@ h1 {
     font-size: clamp(1.35rem, 1.78vw, 1.9rem);
   }
 
-  .plate-number,
-  .vehicle-plate.is-dubai .plate-number {
+  .plate-number {
     font-size: clamp(1.84rem, 2.58vw, 2.7rem);
+  }
+
+  .vehicle-plate.is-dubai .plate-number {
+    font-size: clamp(1.557675rem, 2.064825vw, 2.1553875rem);
   }
 }
 
@@ -1054,6 +1059,10 @@ h1 {
 
   .plate-number {
     font-size: 2.45rem;
+  }
+
+  .vehicle-plate.is-dubai .plate-number {
+    font-size: 1.94709375rem;
   }
 
   .empty-state {

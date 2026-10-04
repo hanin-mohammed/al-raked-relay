@@ -32,6 +32,12 @@ The deployed display reconnects after Firebase errors, renews an idle stream aft
 five minutes, and reconnects when a suspended TV page becomes visible again. These
 checks do not reload the page or replace browser-level recovery settings.
 
+## Audio volume
+
+The chime, three ready announcements and startup sound are loudness-matched. They
+all use `MASTER_AUDIO_VOLUME` near the top of `public/app.js`. It is currently
+`0.2`, or 20%. Change that one value from `0` to `1`, then run `npm run build`.
+
 ## Remote reload
 
 Deploy `database.rules.json`, copy the updated
