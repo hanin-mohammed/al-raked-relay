@@ -37,6 +37,22 @@ const READY_SEQUENCE_SRCS = [
 const READY_SEQUENCE_MAX_MS = 20_000;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
+const RELAY_APP_VERSION = "20261005-health-v1";
+const RELAY_LOAD_ID = typeof globalThis.crypto?.randomUUID === "function"
+  ? globalThis.crypto.randomUUID()
+  : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+const RELAY_RECOVERY_LOG_KEY = "al-raked-recovery-log-v1";
+const RELAY_RELOAD_HISTORY_KEY = "al-raked-reload-history-v1";
+const RELAY_RELOAD_REASON_KEY = "al-raked-last-reload-reason-v1";
+const RELAY_SILENT_RELOAD_KEY = "al-raked-silent-reload-v1";
+const FIREBASE_REQUEST_TIMEOUT_MS = 15_000;
+const FIREBASE_SNAPSHOT_DEADLINE_MS = 60_000;
+const FIREBASE_HEARTBEAT_INTERVAL_MS = 60_000;
+const FIREBASE_SUPERVISOR_INTERVAL_MS = 15_000;
+const FIREBASE_SUSPEND_GAP_MS = 2 * 60 * 1000;
+const PREVENTIVE_RELOAD_INTERVAL_MS = 2 * 60 * 60 * 1000;
+const AUTOMATIC_RELOAD_WINDOW_MS = 15 * 60 * 1000;
+const AUTOMATIC_RELOAD_LIMIT = 3;
 const SOUND_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
 // Keep the chime active while temporarily hiding its TV activation prompt.
 const READY_CHIME_ENABLED = true;
@@ -631,7 +647,8 @@ function finishPromo() {
   promoState.cleanupTimer = window.setTimeout(() => {
     promoVideo.pause();
     promoVideo.classList.remove("is-active");
-    promoVideo.currentTime = 0;
+    promoVideo.removeAttribute("src");
+    promoVideo.load();
     schedulePromo();
   }, PROMO_FADE_MS);
 }
@@ -948,36 +965,6 @@ function sortedFirebaseEntries(value) {
     .slice(0, TRACKED_ENTRY_LIMIT);
 }
 
-async function connectFirebase() {
-  firebaseConnectController?.abort();
-  firebaseConnectController = new AbortController();
-  const controller = firebaseConnectController;
-
-  closeFirebaseStreams();
-  clearTimeout(firebaseRefreshTimer);
-  clearTimeout(firebaseHealthTimer);
-  clearTimeout(firebaseReconnectTimer);
-  firebaseReconnectTimer = null;
-  setConnection(false, "Connecting");
-
-  try {
-    const config = window.AL_RAKED_FIREBASE_CONFIG;
-    const session = await getFirebaseAnonymousSession(config.apiKey, controller.signal);
-    if (controller.signal.aborted) return;
-    openFirebaseStreams(config, session);
-  } catch (error) {
-    if (controller.signal.aborted) return;
-    console.error(error);
-    setConnection(false, "Connection failed");
-    firebaseReconnectAttempts += 1;
-    scheduleFirebaseReconnect();
-  } finally {
-    if (firebaseConnectController === controller) {
-      firebaseConnectController = null;
-    }
-  }
-}
-
 const FIREBASE_REFRESH_TOKEN_KEY = "al-raked-firebase-refresh-token-v1";
 const FIREBASE_REMOTE_COMMAND_KEY = "al-raked-last-remote-command-v1";
 const FIREBASE_RECONNECT_BASE_MS = 3_000;
@@ -993,6 +980,181 @@ let firebaseReconnectTimer = null;
 let firebaseHealthTimer = null;
 let firebaseConnectController = null;
 let firebaseReconnectAttempts = 0;
+let firebaseRecoveryFailures = 0;
+let firebaseSession = null;
+let firebaseConnectionState = "connecting";
+let firebaseConnectStartedAt = 0;
+let firebaseSnapshotDeadlineAt = 0;
+let firebaseSnapshotReceivedForConnection = false;
+let firebaseLastServerContactAt = 0;
+let firebaseLastSnapshotAt = 0;
+let firebaseHeartbeatTimer = null;
+let firebaseHeartbeatFailures = 0;
+let firebaseSupervisorTimer = null;
+let firebaseLastSupervisorTick = Date.now();
+let preventiveReloadAt = Date.now() + PREVENTIVE_RELOAD_INTERVAL_MS;
+let pendingAutomaticReloadTimer = null;
+
+function dubaiClockNumber(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Dubai",
+  }).formatToParts(date);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value || 0);
+  const minute = Number(parts.find((part) => part.type === "minute")?.value || 0);
+  return hour * 100 + minute;
+}
+
+function inRelayMonitoringWindow(date = new Date()) {
+  return dubaiClockNumber(date) >= 700;
+}
+
+function recordRecoveryEvent(reason, details = {}) {
+  try {
+    const retained = JSON.parse(
+      localStorage.getItem(RELAY_RECOVERY_LOG_KEY) || "[]",
+    );
+    const history = Array.isArray(retained) ? retained.slice(-19) : [];
+    history.push({
+      at: new Date().toISOString(),
+      reason: String(reason || "unknown").slice(0, 120),
+      loadId: RELAY_LOAD_ID,
+      appVersion: RELAY_APP_VERSION,
+      connectionState: firebaseConnectionState,
+      ...details,
+    });
+    localStorage.setItem(RELAY_RECOVERY_LOG_KEY, JSON.stringify(history));
+  } catch {
+    // Diagnostics must never interrupt the display.
+  }
+}
+
+async function fetchWithTimeout(
+  url,
+  options = {},
+  timeoutMs = FIREBASE_REQUEST_TIMEOUT_MS,
+  externalSignal,
+) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromExternal = () => controller.abort();
+  if (externalSignal?.aborted) controller.abort();
+  externalSignal?.addEventListener("abort", abortFromExternal, { once: true });
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) throw new Error(`Request timed out after ${timeoutMs} ms`);
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", abortFromExternal);
+  }
+}
+
+function recentAutomaticReloads(now = Date.now()) {
+  try {
+    const stored = JSON.parse(
+      localStorage.getItem(RELAY_RELOAD_HISTORY_KEY) || "[]",
+    );
+    return (Array.isArray(stored) ? stored : []).filter(
+      (timestamp) => Number.isFinite(timestamp) && now - timestamp < AUTOMATIC_RELOAD_WINDOW_MS,
+    );
+  } catch {
+    return [];
+  }
+}
+
+function requestAutomaticReload(reason, deferUntil = Date.now() + 30_000) {
+  if (pendingAutomaticReloadTimer !== null) return false;
+
+  if (readyAlertState.active && Date.now() < deferUntil) {
+    pendingAutomaticReloadTimer = window.setTimeout(() => {
+      pendingAutomaticReloadTimer = null;
+      requestAutomaticReload(reason, deferUntil);
+    }, 1_000);
+    return true;
+  }
+
+  const now = Date.now();
+  const history = recentAutomaticReloads(now);
+  if (history.length >= AUTOMATIC_RELOAD_LIMIT) {
+    recordRecoveryEvent("reload-loop-blocked", { requestedReason: reason });
+    return false;
+  }
+
+  history.push(now);
+  localStorage.setItem(RELAY_RELOAD_HISTORY_KEY, JSON.stringify(history));
+  localStorage.setItem(RELAY_RELOAD_REASON_KEY, String(reason || "automatic"));
+  sessionStorage.setItem(RELAY_SILENT_RELOAD_KEY, "1");
+  recordRecoveryEvent("page-reload", { requestedReason: reason });
+  pendingAutomaticReloadTimer = window.setTimeout(() => {
+    window.location.reload();
+  }, 250);
+  return true;
+}
+
+function markFirebaseContact(snapshot = false) {
+  const now = Date.now();
+  firebaseLastServerContactAt = now;
+  if (snapshot) {
+    firebaseLastSnapshotAt = now;
+    firebaseSnapshotReceivedForConnection = true;
+    firebaseSnapshotDeadlineAt = 0;
+    firebaseRecoveryFailures = 0;
+  }
+}
+
+async function connectFirebase() {
+  firebaseConnectController?.abort();
+  firebaseConnectController = new AbortController();
+  const controller = firebaseConnectController;
+
+  closeFirebaseStreams();
+  clearTimeout(firebaseRefreshTimer);
+  clearTimeout(firebaseHealthTimer);
+  clearTimeout(firebaseReconnectTimer);
+  firebaseReconnectTimer = null;
+  firebaseConnectStartedAt = Date.now();
+  firebaseConnectionState = "connecting";
+  setConnection(false, "Connecting");
+
+  try {
+    const config = window.AL_RAKED_FIREBASE_CONFIG;
+    const session = await getFirebaseAnonymousSession(
+      config.apiKey,
+      controller.signal,
+    );
+    if (controller.signal.aborted) return;
+    firebaseSession = session;
+    openFirebaseStreams(config, session);
+  } catch (error) {
+    if (controller.signal.aborted) return;
+    console.error(error);
+    firebaseConnectionState = "failed";
+    setConnection(false, "Connection failed");
+    firebaseReconnectAttempts += 1;
+    firebaseRecoveryFailures += 1;
+    recordRecoveryEvent("firebase-connect-failed", {
+      message: String(error?.message || error).slice(0, 180),
+      failures: firebaseRecoveryFailures,
+    });
+    if (firebaseRecoveryFailures >= 3) {
+      requestAutomaticReload("firebase-connect-failed");
+    }
+    scheduleFirebaseReconnect();
+  } finally {
+    if (firebaseConnectController === controller) {
+      firebaseConnectController = null;
+    }
+  }
+}
 
 function closeFirebaseStreams() {
   firebaseStream?.close();
@@ -1023,6 +1185,7 @@ function scheduleFirebaseReconnect(delayOverride) {
       return;
     }
 
+    firebaseConnectionState = "recovering";
     setConnection(false, "Reconnecting");
     connectFirebase();
   }, delay);
@@ -1039,6 +1202,7 @@ function scheduleFirebaseHealthReconnect() {
       return;
     }
 
+    firebaseConnectionState = "recovering";
     setConnection(false, "Refreshing");
     connectFirebase();
   }, delay);
@@ -1056,14 +1220,15 @@ async function getFirebaseAnonymousSession(apiKey, signal) {
     }
   }
 
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${encodeURIComponent(apiKey)}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ returnSecureToken: true }),
-      signal,
     },
+    FIREBASE_REQUEST_TIMEOUT_MS,
+    signal,
   );
   const result = await response.json();
   if (!response.ok || !result.idToken || !result.refreshToken) {
@@ -1079,7 +1244,7 @@ async function getFirebaseAnonymousSession(apiKey, signal) {
 }
 
 async function refreshFirebaseSession(apiKey, refreshToken, signal) {
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://securetoken.googleapis.com/v1/token?key=${encodeURIComponent(apiKey)}`,
     {
       method: "POST",
@@ -1088,8 +1253,9 @@ async function refreshFirebaseSession(apiKey, refreshToken, signal) {
         grant_type: "refresh_token",
         refresh_token: refreshToken,
       }),
-      signal,
     },
+    FIREBASE_REQUEST_TIMEOUT_MS,
+    signal,
   );
   const result = await response.json();
   if (!response.ok || !result.id_token || !result.refresh_token) {
@@ -1105,6 +1271,7 @@ async function refreshFirebaseSession(apiKey, refreshToken, signal) {
 }
 
 function applyFirebaseStreamChange(eventType, payload) {
+  markFirebaseContact(true);
   const previousEntries = sortedFirebaseEntries(firebaseSlots);
   const path = payload?.path || "/";
   if (path === "/") {
@@ -1174,11 +1341,13 @@ function applyFirebaseStreamChange(eventType, payload) {
     queueFreshUnseenReadyAlerts(nextEntries);
   }
   hasLoadedSnapshot = true;
+  firebaseConnectionState = "live";
   setConnection(true, "Live");
   scheduleFirebaseHealthReconnect();
 }
 
 function applyFirebaseControlChange(eventType, payload) {
+  markFirebaseContact(false);
   const path = payload?.path || "/";
   if (path === "/") {
     firebaseControlCommand = eventType === "patch"
@@ -1212,7 +1381,143 @@ function applyFirebaseControlChange(eventType, payload) {
   }
 
   localStorage.setItem(FIREBASE_REMOTE_COMMAND_KEY, commandId);
-  window.location.reload();
+  requestAutomaticReload(`remote:${String(command.reason || "reload")}`);
+}
+
+function handleFirebaseEvent(eventType, event, callback) {
+  try {
+    callback(eventType, JSON.parse(event.data));
+  } catch (error) {
+    console.error("Firebase stream event could not be processed.", error);
+    firebaseRecoveryFailures += 1;
+    recordRecoveryEvent("firebase-event-invalid", {
+      eventType,
+      failures: firebaseRecoveryFailures,
+    });
+    scheduleFirebaseReconnect(0);
+  }
+}
+
+async function sendFirebaseHeartbeat() {
+  window.clearTimeout(firebaseHeartbeatTimer);
+  firebaseHeartbeatTimer = null;
+
+  if (!firebaseSession || !inRelayMonitoringWindow()) {
+    scheduleFirebaseHeartbeat();
+    return;
+  }
+
+  const config = window.AL_RAKED_FIREBASE_CONFIG;
+  const databaseUrl = config.databaseURL.replace(/\/$/, "");
+  const payload = {
+    lastSeen: { ".sv": "timestamp" },
+    loadId: RELAY_LOAD_ID,
+    appVersion: RELAY_APP_VERSION,
+    connectionState: firebaseConnectionState,
+    lastSnapshotAt: firebaseLastSnapshotAt || 0,
+    lastServerContactAt: firebaseLastServerContactAt || 0,
+    lastReloadReason: String(
+      localStorage.getItem(RELAY_RELOAD_REASON_KEY) || "",
+    ).slice(0, 120),
+    lastCommandId: String(
+      localStorage.getItem(FIREBASE_REMOTE_COMMAND_KEY) || "",
+    ).slice(0, 120),
+  };
+
+  try {
+    const response = await fetchWithTimeout(
+      `${databaseUrl}/displayHealth/main.json?auth=${encodeURIComponent(firebaseSession.idToken)}&print=silent`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+      FIREBASE_REQUEST_TIMEOUT_MS,
+    );
+    if (!response.ok) {
+      const error = new Error(`Heartbeat returned HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    firebaseHeartbeatFailures = 0;
+  } catch (error) {
+    firebaseHeartbeatFailures += 1;
+    console.warn("Relay heartbeat failed.", error);
+    recordRecoveryEvent("heartbeat-failed", {
+      failures: firebaseHeartbeatFailures,
+      message: String(error?.message || error).slice(0, 180),
+    });
+    if (
+      firebaseHeartbeatFailures >= 2 &&
+      error?.status !== 401 &&
+      error?.status !== 403
+    ) {
+      scheduleFirebaseReconnect(0);
+    }
+  } finally {
+    scheduleFirebaseHeartbeat();
+  }
+}
+
+function scheduleFirebaseHeartbeat(delay = FIREBASE_HEARTBEAT_INTERVAL_MS) {
+  window.clearTimeout(firebaseHeartbeatTimer);
+  firebaseHeartbeatTimer = window.setTimeout(sendFirebaseHeartbeat, delay);
+}
+
+function runFirebaseSupervisor() {
+  window.clearTimeout(firebaseSupervisorTimer);
+  const now = Date.now();
+  const elapsed = now - firebaseLastSupervisorTick;
+  firebaseLastSupervisorTick = now;
+
+  if (elapsed > FIREBASE_SUSPEND_GAP_MS && inRelayMonitoringWindow()) {
+    recordRecoveryEvent("browser-resumed", { suspendedForMs: elapsed });
+    requestAutomaticReload("browser-resumed");
+  }
+
+  if (
+    firebaseSnapshotDeadlineAt &&
+    !firebaseSnapshotReceivedForConnection &&
+    now >= firebaseSnapshotDeadlineAt
+  ) {
+    firebaseSnapshotDeadlineAt = 0;
+    firebaseRecoveryFailures += 1;
+    recordRecoveryEvent("snapshot-deadline-missed", {
+      failures: firebaseRecoveryFailures,
+    });
+    if (firebaseRecoveryFailures >= 2) {
+      requestAutomaticReload("snapshot-deadline-missed");
+    } else {
+      scheduleFirebaseReconnect(0);
+    }
+  }
+
+  if (
+    firebaseConnectStartedAt &&
+    firebaseConnectionState === "connecting" &&
+    now - firebaseConnectStartedAt > FIREBASE_REQUEST_TIMEOUT_MS * 3
+  ) {
+    firebaseConnectController?.abort();
+    firebaseRecoveryFailures += 1;
+    recordRecoveryEvent("connection-attempt-stalled", {
+      failures: firebaseRecoveryFailures,
+    });
+    if (firebaseRecoveryFailures >= 2) {
+      requestAutomaticReload("connection-attempt-stalled");
+    } else {
+      scheduleFirebaseReconnect(0);
+    }
+  }
+
+  if (now >= preventiveReloadAt && inRelayMonitoringWindow()) {
+    preventiveReloadAt = now + PREVENTIVE_RELOAD_INTERVAL_MS;
+    requestAutomaticReload("scheduled-refresh");
+  }
+
+  firebaseSupervisorTimer = window.setTimeout(
+    runFirebaseSupervisor,
+    FIREBASE_SUPERVISOR_INTERVAL_MS,
+  );
 }
 
 function openFirebaseStreams(config, session) {
@@ -1220,6 +1525,10 @@ function openFirebaseStreams(config, session) {
   clearTimeout(firebaseRefreshTimer);
   clearTimeout(firebaseReconnectTimer);
   firebaseReconnectTimer = null;
+  firebaseSession = session;
+  firebaseSnapshotReceivedForConnection = false;
+  firebaseSnapshotDeadlineAt = Date.now() + FIREBASE_SNAPSHOT_DEADLINE_MS;
+  firebaseConnectionState = "connecting";
 
   const databaseUrl = config.databaseURL.replace(/\/$/, "");
   firebaseStream = new EventSource(
@@ -1229,46 +1538,64 @@ function openFirebaseStreams(config, session) {
     `${databaseUrl}/displayControl/main.json?auth=${encodeURIComponent(session.idToken)}`,
   );
   firebaseStream.addEventListener("open", () => {
+    markFirebaseContact(false);
     firebaseReconnectAttempts = 0;
+    firebaseConnectionState = "live";
     setConnection(true, "Live");
     scheduleFirebaseHealthReconnect();
+    scheduleFirebaseHeartbeat(0);
   });
   firebaseStream.addEventListener("put", (event) => {
-    applyFirebaseStreamChange("put", JSON.parse(event.data));
+    handleFirebaseEvent("put", event, applyFirebaseStreamChange);
   });
   firebaseStream.addEventListener("patch", (event) => {
-    applyFirebaseStreamChange("patch", JSON.parse(event.data));
+    handleFirebaseEvent("patch", event, applyFirebaseStreamChange);
+  });
+  firebaseStream.addEventListener("keep-alive", () => {
+    markFirebaseContact(false);
   });
   firebaseStream.addEventListener("cancel", (event) => {
     console.error("Firebase stream cancelled.", event.data);
+    firebaseConnectionState = "failed";
     setConnection(false, "Connection failed");
     firebaseReconnectAttempts += 1;
     scheduleFirebaseReconnect();
   });
   firebaseStream.addEventListener("auth_revoked", () => {
     localStorage.removeItem(FIREBASE_REFRESH_TOKEN_KEY);
+    firebaseConnectionState = "recovering";
     setConnection(false, "Reconnecting");
     scheduleFirebaseReconnect(0);
   });
   firebaseStream.onerror = () => {
+    firebaseConnectionState = "recovering";
     setConnection(false, "Reconnecting");
     firebaseReconnectAttempts += 1;
     scheduleFirebaseReconnect();
   };
 
   firebaseControlStream.addEventListener("put", (event) => {
-    applyFirebaseControlChange("put", JSON.parse(event.data));
+    handleFirebaseEvent("put", event, applyFirebaseControlChange);
   });
   firebaseControlStream.addEventListener("patch", (event) => {
-    applyFirebaseControlChange("patch", JSON.parse(event.data));
+    handleFirebaseEvent("patch", event, applyFirebaseControlChange);
+  });
+  firebaseControlStream.addEventListener("keep-alive", () => {
+    markFirebaseContact(false);
   });
   firebaseControlStream.addEventListener("cancel", (event) => {
     console.warn("Remote display control is unavailable.", event.data);
   });
   firebaseControlStream.addEventListener("auth_revoked", () => {
     localStorage.removeItem(FIREBASE_REFRESH_TOKEN_KEY);
+    firebaseConnectionState = "recovering";
     scheduleFirebaseReconnect(0);
   });
+  firebaseControlStream.onerror = () => {
+    firebaseConnectionState = "recovering";
+    firebaseReconnectAttempts += 1;
+    scheduleFirebaseReconnect();
+  };
 
   const refreshAfterSeconds = Math.max(60, session.expiresIn - 300);
   firebaseRefreshTimer = window.setTimeout(async () => {
@@ -1333,16 +1660,35 @@ const useFirebase =
   sourceOverride === "firebase" ||
   (sourceOverride !== "local" && !localHostnames.has(window.location.hostname));
 
-playStartupSoundOnce();
+const silentRecoveryReload = sessionStorage.getItem(RELAY_SILENT_RELOAD_KEY) === "1";
+sessionStorage.removeItem(RELAY_SILENT_RELOAD_KEY);
+if (silentRecoveryReload) {
+  hasPlayedStartupSound = true;
+  releaseStartupSoundLock();
+} else {
+  playStartupSoundOnce();
+}
 render([]);
 
 if (useFirebase) {
   connectFirebase();
+  runFirebaseSupervisor();
   window.addEventListener("pageshow", (event) => {
-    if (event.persisted) scheduleFirebaseReconnect(0);
+    if (event.persisted || document.wasDiscarded) scheduleFirebaseReconnect(0);
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") scheduleFirebaseReconnect(0);
+    if (document.visibilityState === "visible") {
+      scheduleFirebaseReconnect(0);
+      scheduleFirebaseHeartbeat(0);
+    }
+  });
+  window.addEventListener("online", () => scheduleFirebaseReconnect(0));
+  document.addEventListener("freeze", () => {
+    recordRecoveryEvent("browser-freeze");
+  });
+  document.addEventListener("resume", () => {
+    scheduleFirebaseReconnect(0);
+    scheduleFirebaseHeartbeat(0);
   });
 } else {
   connectLocal();

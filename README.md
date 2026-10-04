@@ -29,8 +29,9 @@ Localhost uses the proof-of-concept server by default. Add `?source=firebase` to
 The Firebase database retains thirty fixed slots. Apps Script overwrites one slot per successful form submission, and the website sorts those records by timestamp. The display renders the newest thirteen while still watching all thirty for status changes.
 
 The deployed display reconnects after Firebase errors, renews an idle stream after
-five minutes, and reconnects when a suspended TV page becomes visible again. These
-checks do not reload the page or replace browser-level recovery settings.
+five minutes, times out stalled authentication requests, reports a one-minute
+health heartbeat, reloads after repeated recovery failures and performs a silent
+preventive refresh every two hours between 07:00 and midnight Dubai time.
 
 ## Audio volume
 
@@ -43,7 +44,12 @@ all use `MASTER_AUDIO_VOLUME` near the top of `public/app.js`. It is currently
 Deploy `database.rules.json`, copy the updated
 `Al_Raked_Firebase_Live_Display.gs` into the existing Apps Script project, then run
 `requestRelayDisplayReload()` whenever the main TV page needs a remote refresh.
-Commands expire after two minutes and each command runs only once per browser.
+Commands expire after three minutes and each command runs only once per browser.
+The existing one-minute `reconcileFirebaseLiveDisplayStatuses` trigger also checks
+the global heartbeat after the first Relay page check-in each day. If the heartbeat
+stays stale, it renews reload commands until the page reports healthy again. Set
+the `FIREBASE_RELAY_HEALTH_MONITOR_ENABLED` Script Property to `false` to suspend
+automatic reload commands without removing the trigger.
 
 ## Vercel
 

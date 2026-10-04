@@ -10,6 +10,40 @@
       "$displayId": {
         ".read": "auth != null"
       }
+    },
+    "displayHealth": {
+      "main": {
+        ".read": "auth != null",
+        ".write": "auth != null",
+        ".validate": "newData.hasChildren(['lastSeen', 'loadId', 'appVersion', 'connectionState', 'lastSnapshotAt', 'lastServerContactAt', 'lastReloadReason', 'lastCommandId'])",
+        "lastSeen": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000 && newData.val() >= now - 120000"
+        },
+        "loadId": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80"
+        },
+        "appVersion": {
+          ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 80"
+        },
+        "connectionState": {
+          ".validate": "newData.isString() && (newData.val() === 'connecting' || newData.val() === 'live' || newData.val() === 'recovering' || newData.val() === 'failed')"
+        },
+        "lastSnapshotAt": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "lastServerContactAt": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        },
+        "lastReloadReason": {
+          ".validate": "newData.isString() && newData.val().length <= 120"
+        },
+        "lastCommandId": {
+          ".validate": "newData.isString() && newData.val().length <= 120"
+        },
+        "$other": {
+          ".validate": false
+        }
+      }
     }
   }
 }
