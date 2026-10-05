@@ -56,8 +56,13 @@ automatic reload commands without removing the trigger.
 The same one-minute supervisor also checks `lastSnapshotAt`. A fresh heartbeat
 with no Firebase snapshot for eight minutes is treated as a stalled feed and uses
 the existing failure email, reload and recovery flow. Full sheet-to-Firebase
-reconciliation is limited to once every five minutes; form submissions and
-Finished edits still publish immediately. The separate five-minute
+reconciliation is limited to once every five minutes as a safety fallback.
+Form submissions still publish immediately. Relevant edits and structural changes
+in `Form Responses 1`, including row removal, wait about eight seconds after the
+last nearby change and then force one full thirty-entry reconciliation. Run
+`createTriggers()` once after installing both Apps Script files so the managed
+`onEdit`, `onChange`, form-submit and supervisor triggers are installed exactly
+once. The separate five-minute
 `refreshReportTimestamp` trigger is intentionally not installed because `calc()`
 updates that timestamp whenever the report is rebuilt.
 
