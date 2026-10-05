@@ -53,6 +53,14 @@ stays stale, it renews reload commands until the page reports healthy again. Set
 the `FIREBASE_RELAY_HEALTH_MONITOR_ENABLED` Script Property to `false` to suspend
 automatic reload commands without removing the trigger.
 
+The same one-minute supervisor also checks `lastSnapshotAt`. A fresh heartbeat
+with no Firebase snapshot for eight minutes is treated as a stalled feed and uses
+the existing failure email, reload and recovery flow. Full sheet-to-Firebase
+reconciliation is limited to once every five minutes; form submissions and
+Finished edits still publish immediately. The separate five-minute
+`refreshReportTimestamp` trigger is intentionally not installed because `calc()`
+updates that timestamp whenever the report is rebuilt.
+
 ## Vercel
 
 Import this project directory into Vercel with the framework preset set to **Other**.
