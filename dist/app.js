@@ -37,7 +37,7 @@ const READY_SEQUENCE_SRCS = [
 const READY_SEQUENCE_MAX_MS = 20_000;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
-const RELAY_APP_VERSION = "20261005-health-v1";
+const RELAY_APP_VERSION = "20261005-health-v2";
 const RELAY_LOAD_ID = typeof globalThis.crypto?.randomUUID === "function"
   ? globalThis.crypto.randomUUID()
   : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -48,6 +48,8 @@ const RELAY_SILENT_RELOAD_KEY = "al-raked-silent-reload-v1";
 const FIREBASE_REQUEST_TIMEOUT_MS = 15_000;
 const FIREBASE_SNAPSHOT_DEADLINE_MS = 60_000;
 const FIREBASE_HEARTBEAT_INTERVAL_MS = 60_000;
+const RELAY_MONITOR_START_HHMM = 700;
+const RELAY_MONITOR_END_HHMM = 2220;
 const FIREBASE_SUPERVISOR_INTERVAL_MS = 15_000;
 const FIREBASE_SUSPEND_GAP_MS = 2 * 60 * 1000;
 const PREVENTIVE_RELOAD_INTERVAL_MS = 2 * 60 * 60 * 1000;
@@ -1008,7 +1010,11 @@ function dubaiClockNumber(date = new Date()) {
 }
 
 function inRelayMonitoringWindow(date = new Date()) {
-  return dubaiClockNumber(date) >= 700;
+  const currentTime = dubaiClockNumber(date);
+  return (
+    currentTime >= RELAY_MONITOR_START_HHMM &&
+    currentTime < RELAY_MONITOR_END_HHMM
+  );
 }
 
 function recordRecoveryEvent(reason, details = {}) {

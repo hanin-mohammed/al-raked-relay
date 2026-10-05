@@ -31,7 +31,9 @@ The Firebase database retains thirty fixed slots. Apps Script overwrites one slo
 The deployed display reconnects after Firebase errors, renews an idle stream after
 five minutes, times out stalled authentication requests, reports a one-minute
 health heartbeat, reloads after repeated recovery failures and performs a silent
-preventive refresh every two hours between 07:00 and midnight Dubai time.
+preventive refresh every two hours between 07:00 and 22:20 Dubai time.
+Normal Firebase reconnect and feed-recovery behaviour remains active whenever the
+page is running, including after 22:20.
 
 ## Audio volume
 
