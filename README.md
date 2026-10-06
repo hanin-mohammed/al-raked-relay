@@ -31,7 +31,7 @@ The Firebase database retains thirty fixed slots. Apps Script overwrites one slo
 The deployed display reconnects after Firebase errors, renews an idle stream after
 five minutes, times out stalled authentication requests, reports a one-minute
 health heartbeat, reloads after repeated recovery failures and performs a silent
-preventive refresh every two hours between 07:00 and 22:20 Dubai time.
+preventive refresh every hour between 07:00 and 22:20 Dubai time.
 Normal Firebase reconnect and feed-recovery behaviour remains active whenever the
 page is running, including after 22:20.
 
@@ -55,8 +55,12 @@ automatic reload commands without removing the trigger.
 
 The same one-minute supervisor also checks `lastSnapshotAt`. A fresh heartbeat
 with no Firebase snapshot for eight minutes is treated as a stalled feed and uses
-the existing failure email, reload and recovery flow. Full sheet-to-Firebase
-reconciliation is limited to once every five minutes as a safety fallback.
+the existing failure email, reload and recovery flow. Automated reload commands
+are targeted to the stalled page session, and recovery is confirmed only after a
+new page session reports the command ID. Confirmed faults, reload attempts and
+recoveries are retained under `displayIncidents/YYYY-MM` in Firebase. Full
+sheet-to-Firebase reconciliation is limited to once every five minutes as a
+safety fallback.
 Form submissions still publish immediately. Relevant edits and structural changes
 in `Form Responses 1`, including row removal, wait about eight seconds after the
 last nearby change and then force one full thirty-entry reconciliation. Run
@@ -65,6 +69,13 @@ last nearby change and then force one full thirty-entry reconciliation. Run
 once. The separate five-minute
 `refreshReportTimestamp` trigger is intentionally not installed because `calc()`
 updates that timestamp whenever the report is rebuilt.
+
+To monitor the Apps Script supervisor itself, set the optional Script Property
+`FIREBASE_RELAY_SUPERVISOR_PING_URL` to an external dead-man check URL. A success
+ping is sent at most once every five minutes during the 07:00–22:20 monitoring
+window. Configure the external check with a grace period of at least seven
+minutes. If the trigger, Apps Script project or Firebase health lookup stops,
+successful pings stop as well.
 
 ## Vercel
 

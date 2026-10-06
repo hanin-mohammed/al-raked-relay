@@ -37,7 +37,7 @@ const READY_SEQUENCE_SRCS = [
 const READY_SEQUENCE_MAX_MS = 20_000;
 const READY_EVENT_MAX_AGE_MS = 10 * 60 * 1000;
 const READY_EVENT_STORAGE_KEY = "al-raked-seen-ready-events-v1";
-const RELAY_APP_VERSION = "20261005-health-v2";
+const RELAY_APP_VERSION = "20261006-health-v3";
 const RELAY_LOAD_ID = typeof globalThis.crypto?.randomUUID === "function"
   ? globalThis.crypto.randomUUID()
   : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -52,7 +52,7 @@ const RELAY_MONITOR_START_HHMM = 700;
 const RELAY_MONITOR_END_HHMM = 2220;
 const FIREBASE_SUPERVISOR_INTERVAL_MS = 15_000;
 const FIREBASE_SUSPEND_GAP_MS = 2 * 60 * 1000;
-const PREVENTIVE_RELOAD_INTERVAL_MS = 2 * 60 * 60 * 1000;
+const PREVENTIVE_RELOAD_INTERVAL_MS = 60 * 60 * 1000;
 const AUTOMATIC_RELOAD_WINDOW_MS = 15 * 60 * 1000;
 const AUTOMATIC_RELOAD_LIMIT = 3;
 const SOUND_PROMPT_TIMEOUT_MS = 2 * 60 * 1000;
@@ -1371,6 +1371,7 @@ function applyFirebaseControlChange(eventType, payload) {
 
   const command = firebaseControlCommand;
   const commandId = String(command.id || "").trim();
+  const previousLoadId = String(command.previousLoadId || "").trim();
   const issuedAt = new Date(command.issuedAt).getTime();
   const expiresAt = new Date(command.expiresAt).getTime();
   const lastCommandId = localStorage.getItem(FIREBASE_REMOTE_COMMAND_KEY) || "";
@@ -1381,7 +1382,8 @@ function applyFirebaseControlChange(eventType, payload) {
     !Number.isFinite(issuedAt) ||
     !Number.isFinite(expiresAt) ||
     issuedAt > Date.now() + 60_000 ||
-    expiresAt <= Date.now()
+    expiresAt <= Date.now() ||
+    (previousLoadId && previousLoadId !== RELAY_LOAD_ID)
   ) {
     return;
   }
