@@ -1,11 +1,32 @@
-# Al Raked Live Display
+# Al Raked Relay
 
-Small local proof of concept for showing the latest thirteen service entries on a TV, phone or tablet while tracking the latest thirty for status alerts.
+Al Raked Relay is a live operational display built for Al Raked Car Wash. It shows the latest service entries on a TV, phone or tablet, announces vehicles marked ready and monitors its own connection health.
+
+## What it does
+
+- Displays the latest thirteen service records while tracking thirty for status changes
+- Plays ready announcements and configurable audio alerts
+- Receives live updates through Firebase
+- Reports heartbeats and feed health for an unattended TV display
+- Supports remote reload commands, recovery confirmation and incident records
+- Includes a local server for development and testing
+
+## System structure
+
+The main database publishes selected service updates to Firebase. Relay listens for those changes, sorts the latest records and renders the display. A separate Apps Script supervisor checks the client heartbeat and recent Firebase activity, then requests a targeted reload when recovery is needed.
+
+## Development note
+
+AI-assisted coding supported parts of implementation and debugging. I defined the operating requirements, tested the display in daily use and revised the recovery logic after observed connection and feed failures.
+
+## Privacy
+
+Use sample records for local testing. Production database rules should limit access to approved clients and expose only the fields needed by the display.
 
 ## Run
 
 ```sh
-cd /Users/hanin/Documents/ChatGPT/RDBMS/al-raked-live-display
+cd al-raked-relay
 npm start
 ```
 
